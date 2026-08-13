@@ -105,6 +105,18 @@ export function Detail() {
 
   const decisionLabel = reference.decisions.find((d) => d.value === decision)?.label;
 
+  // Actions come back newest-first, so the head is the decision in force.
+  const latest = actions[0];
+  // Approving or denying moves a complaint on to enforcement intake, so
+  // changing it afterwards is a reversal and should look like one. Resolving a
+  // "needs more info" hold is the opposite - that state exists precisely to be
+  // decided later, so it stays frictionless.
+  const supersedes = latest && (latest.action === 'approve' || latest.action === 'deny');
+  const onHold = latest?.action === 'needs_info';
+  const latestLabel =
+    latest &&
+    reference.statuses[reference.decisions.find((d) => d.value === latest.action)?.status]?.label;
+
   // The oldest entry is always the filing itself, so the timeline never starts
   // in the middle of the story.
   const timeline = [
@@ -225,11 +237,26 @@ export function Detail() {
 
         <form className="card decision-panel" onSubmit={submit} noValidate>
           <h2 className="card__h" style={{ marginBottom: 4 }}>
-            Record a decision
+            {supersedes ? 'Change the decision' : 'Record a decision'}
           </h2>
           <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 18px', lineHeight: 1.5 }}>
             Internal only. Nothing is sent to the complainant.
           </p>
+
+          {supersedes && (
+            <div className="callout callout--warning" style={{ marginBottom: 18 }}>
+              <div className="callout__title">Already decided</div>
+              <strong>{latestLabel}</strong> by {latest.reviewerName} on{' '}
+              {formatStamp(latest.createdAt)}. Recording another decision supersedes it — the
+              earlier one stays in the history.
+            </div>
+          )}
+
+          {onHold && (
+            <div className="callout callout--info" style={{ marginBottom: 18 }}>
+              On hold since {formatStamp(latest.createdAt)}. Recording a decision resolves it.
+            </div>
+          )}
 
           <RadioCards
             id="decision"
@@ -247,7 +274,11 @@ export function Detail() {
           <TextArea
             id="note"
             label="Reviewer note"
-            hint="Recorded with your name and timestamp."
+            hint={
+              supersedes
+                ? 'Explain why the earlier decision is being changed. Recorded with your name and timestamp.'
+                : 'Recorded with your name and timestamp.'
+            }
             required
             value={note}
             onChange={(value) => {
@@ -269,7 +300,7 @@ export function Detail() {
             {busy
               ? 'Recording…'
               : decisionLabel
-                ? `Record ${decisionLabel.toLowerCase()}`
+                ? `${supersedes ? 'Override with' : 'Record'} ${decisionLabel.toLowerCase()}`
                 : 'Select an action'}
           </button>
 
