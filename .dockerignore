@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+.git
+.gitignore
+
+# The database is a runtime artefact on a volume, never baked into the image.
+server/db/*.db
+server/db/*.db-wal
+server/db/*.db-shm
+server/test/tmp
+
+*.md
+!server/db/schema.sql
+.claude
+.env
+.env.local
