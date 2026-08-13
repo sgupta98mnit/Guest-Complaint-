@@ -1,0 +1,651 @@
+/*
+ * Loosely modelled on the CMS Design System (design.cms.gov) - its palette,
+ * type scale, form treatment, and button hierarchy - without pulling in the
+ * package. Hand-written so the whole surface stays small and inspectable.
+ *
+ * No web-font CDN on purpose. A government-facing site that loads fonts from a
+ * third party leaks every visitor's IP address to that third party, so this
+ * uses a system font stack and names Public Sans / Merriweather first in case
+ * they are installed locally.
+ */
+
+:root {
+  --color-primary: #205493;
+  --color-primary-darker: #112e51;
+  --color-primary-alt: #046b99;
+  --color-primary-alt-light: #e1f3f8;
+
+  --color-success: #2e8540;
+  --color-success-bg: #e7f4e4;
+  --color-error: #d83933;
+  --color-error-bg: #f9dede;
+  --color-warning: #b8770a;
+  --color-warning-bg: #fff1d2;
+  --color-info-bg: #e1f3f8;
+
+  --color-base: #212121;
+  --color-muted: #5b616b;
+  --color-gray-light: #d6d7d9;
+  --color-gray-lightest: #f1f1f1;
+  --color-white: #ffffff;
+  --color-page: #f6f7f9;
+
+  --font-sans: 'Public Sans', 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: 'Merriweather', Georgia, 'Times New Roman', serif;
+
+  --radius: 4px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --focus-ring: 0 0 0 3px #3d94cd;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-base);
+  background: var(--color-page);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  color: var(--color-primary-darker);
+  line-height: 1.3;
+  margin: 0 0 0.5rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+h2 {
+  font-size: 1.3rem;
+}
+h3 {
+  font-size: 1.05rem;
+}
+
+a {
+  color: var(--color-primary-alt);
+}
+
+/* A single, consistent, always-visible focus treatment. Never remove this
+   without replacing it - keyboard users navigate entirely by focus. */
+:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+  border-radius: 2px;
+}
+
+/* Visible only to screen readers, and to sighted users once focused. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--color-primary-darker);
+  color: var(--color-white);
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.site-header {
+  background: var(--color-white);
+  border-bottom: 1px solid var(--color-gray-light);
+}
+
+.site-header__inner,
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 72px;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.site-header__brand {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.site-header__tagline {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-muted);
+  letter-spacing: 0;
+}
+
+.page {
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+}
+
+.site-footer {
+  border-top: 1px solid var(--color-gray-light);
+  background: var(--color-white);
+  padding: 1.5rem 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.stack > * + * {
+  margin-top: 1rem;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1.5rem;
+}
+
+@media (max-width: 700px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -------------------------------------------------------------------- card */
+
+.card {
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+}
+
+.card + .card {
+  margin-top: 1.5rem;
+}
+
+.card__section-title {
+  background: var(--color-gray-lightest);
+  border: 1px solid var(--color-gray-light);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.5rem 0.75rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.card__section-title:first-child {
+  margin-top: 0;
+}
+
+.lede {
+  font-size: 1.05rem;
+  color: var(--color-muted);
+}
+
+.required-key {
+  font-size: 0.85rem;
+  color: var(--color-warning);
+}
+
+/* ----------------------------------------------------------------- stepper */
+
+.stepper {
+  display: flex;
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.stepper__step {
+  flex: 1 1 0;
+  min-width: 118px;
+  position: relative;
+  background: var(--color-gray-lightest);
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
+  white-space: nowrap;
+}
+
+.stepper__step--done {
+  background: var(--color-success);
+  color: var(--color-white);
+}
+
+.stepper__step--current {
+  background: var(--color-primary-darker);
+  color: var(--color-white);
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.7rem 1.4rem;
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--color-primary-darker);
+  color: var(--color-white);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-primary);
+}
+
+.btn--secondary {
+  background: var(--color-white);
+  color: var(--color-primary-darker);
+  border-color: var(--color-gray-light);
+}
+.btn--secondary:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.btn--link {
+  background: none;
+  border: none;
+  color: var(--color-primary-alt);
+  text-decoration: underline;
+  padding: 0.25rem;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+.btn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------- forms */
+
+.field {
+  margin-bottom: 1.25rem;
+}
+
+.field__label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.field__required {
+  color: var(--color-error);
+  margin-right: 0.15rem;
+}
+
+.field__hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  margin-bottom: 0.35rem;
+}
+
+.field__control {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-base);
+  border-radius: var(--radius);
+  background: var(--color-white);
+  color: var(--color-base);
+}
+
+textarea.field__control {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+/* The red bar is deliberately paired with an inline message - colour alone is
+   never the only signal that something is wrong. */
+.field--error .field__control {
+  border: 2px solid var(--color-error);
+  border-left-width: 6px;
+}
+
+.field__error {
+  display: block;
+  color: var(--color-error);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-top: 0.35rem;
+}
+
+.field--radio {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+
+.field--radio legend {
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+.radio-option {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+}
+
+.radio-option input {
+  margin-top: 0.25rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+}
+
+.radio-option__body label {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.radio-option__description {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin: 0.15rem 0 0;
+}
+
+/* ------------------------------------------------------------------ alerts */
+
+.alert {
+  border-left: 6px solid;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+}
+
+.alert h2,
+.alert h3 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.alert--error {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+}
+.alert--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+.alert--info {
+  background: var(--color-info-bg);
+  border-color: var(--color-primary-alt);
+}
+.alert--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning);
+}
+
+.alert__list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.alert__list button {
+  color: var(--color-error);
+}
+
+/* ------------------------------------------------------------------ badges */
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.badge--submitted {
+  background: var(--color-info-bg);
+  color: var(--color-primary-darker);
+}
+.badge--approved {
+  background: var(--color-success-bg);
+  color: #14562a;
+}
+.badge--denied {
+  background: var(--color-error-bg);
+  color: #8b1a17;
+}
+.badge--needs_info {
+  background: var(--color-warning-bg);
+  color: #7a4e05;
+}
+
+/* ------------------------------------------------------------------- table */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--color-gray-light);
+  vertical-align: top;
+}
+
+.table thead th {
+  background: var(--color-gray-lightest);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted);
+  border-bottom: 2px solid var(--color-gray-light);
+}
+
+.table tbody tr:hover {
+  background: #fafbfc;
+}
+
+.table__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+}
+
+/* -------------------------------------------------------- definition lists */
+
+.dl {
+  margin: 0;
+}
+
+.dl__row {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-gray-lightest);
+}
+
+.dl dt {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted);
+}
+
+.dl dd {
+  margin: 0.15rem 0 0;
+}
+
+/* ------------------------------------------------------------------- modal */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(33, 33, 33, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--color-white);
+  border-radius: var(--radius);
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.modal__header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-gray-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal__header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-muted);
+  padding: 0.25rem 0.5rem;
+}
+
+.modal__body {
+  padding: 1.5rem;
+}
+
+.modal__footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-gray-light);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- utilities */
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-small {
+  font-size: 0.875rem;
+}
+
+.text-legal {
+  font-size: 0.85rem;
+  color: #9c4221;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.confirmation {
+  text-align: center;
+  padding: 1rem 0 0.5rem;
+}
+
+.confirmation__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-primary-darker);
+  display: block;
+  margin: 0.5rem 0 1.5rem;
+}
+
+.dev-note {
+  background: #fffbe6;
+  border: 1px dashed var(--color-warning);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
