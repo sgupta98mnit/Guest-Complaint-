@@ -155,6 +155,15 @@ RETURNING last_seq
 One atomic upsert. Two concurrent submissions cannot read the same value, and deleting a complaint
 does not cause its number to be reissued.
 
+If redemption fails, the wizard does **not** send the filer back to the start. Verification state
+is process-local, so a deploy or a 30-minute expiry can invalidate a token while someone is still
+filling in the form — and discarding a completed seven-step form because of that is a far worse
+outcome than the problem it is reacting to. Instead the wizard opens the verification dialog in
+place with the email locked to the one on the complaint, and retries the submission with the fresh
+token once the code is accepted. Because validation runs before redemption and all three inserts
+share a transaction, a rejected attempt leaves nothing behind, so the retry is safe. Covered by a
+regression test.
+
 4. The response is `{ trackingId, status }` — no internal row id. A guest cannot look a complaint
    up anyway, and handing out sequential internal ids on a public endpoint invites probing.
 
@@ -256,7 +265,7 @@ Ranked by how much they would matter in production.
 | 6 | **`prev_tracking_id` is unvalidated free text** | Can reference a complaint that does not exist | Deliberate — confirming a tracking ID exists would let anyone probe for valid ones. Real fix: resolve it server-side and expose the link only to reviewers |
 | 7 | **Reads are not audited** | We know who *decided*, not who *looked* at a complainant's contact details | Append-only access log, which is table stakes in real government systems |
 | 8 | **SQLite is single-writer** | Concurrent writes serialize; under load a writer can hit `SQLITE_BUSY` | Set `busy_timeout`; migrate to Postgres when write concurrency is real |
-| 9 | **Verification state is in memory** | A restart mid-flow invalidates pending codes and tokens | Move to Redis or a table with a TTL sweep |
+| 9 | **Verification state is in memory** | A restart mid-flow invalidates pending codes and tokens. Mitigated in the UI — the filer re-verifies in place and keeps their form — but the underlying state is still process-local | Move to Redis or a table with a TTL sweep |
 | 10 | **No frontend tests** | The React layer is verified manually and by a scripted pass over the built app | Vitest + Testing Library on the wizard's step-gating and error-routing logic |
 | 11 | **Guests can create organizations, and nobody can merge them** | Near-duplicates ("Riverbend Hospital" vs "Riverbend Regional Hospital") will accumulate, and dedupe is on name alone so the same name in two cities cannot coexist | Staff curation tooling — merge, edit, deactivate — plus a natural key that includes address or NPI/EIN |
 | 12 | **`ensureColumn` is not a migration system** | It adds a missing column on boot, but there is no ordering, no version tracking, and no down path | A real migration tool before a second environment exists |

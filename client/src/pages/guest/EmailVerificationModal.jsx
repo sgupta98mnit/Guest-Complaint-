@@ -11,9 +11,17 @@ import { api } from '../../api.js';
  * complainant email at submit time, so a filer cannot verify an address they
  * control and then file under somebody else's.
  */
-export function EmailVerificationModal({ onClose, onVerified }) {
+export function EmailVerificationModal({
+  onClose,
+  onVerified,
+  initialEmail = '',
+  // When re-verifying part-way through a filing, the address is fixed: the
+  // server requires the verified email to match the one on the complaint.
+  lockEmail = false,
+  intro,
+}) {
   const [phase, setPhase] = useState('email'); // 'email' | 'code'
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState(null);
   const [errors, setErrors] = useState({});
@@ -83,7 +91,7 @@ export function EmailVerificationModal({ onClose, onVerified }) {
       <form id="verification-form" onSubmit={phase === 'email' ? sendCode : verify} noValidate>
         {phase === 'email' ? (
           <>
-            <p>Please enter your email address to receive a verification code.</p>
+            <p>{intro || 'Please enter your email address to receive a verification code.'}</p>
             <TextField
               id="verification-email"
               label="Email Address"
@@ -93,6 +101,12 @@ export function EmailVerificationModal({ onClose, onVerified }) {
               onChange={setEmail}
               error={errors.email}
               autoComplete="email"
+              readOnly={lockEmail}
+              hint={
+                lockEmail
+                  ? 'This must match the email address on your complaint.'
+                  : undefined
+              }
             />
           </>
         ) : (
@@ -124,16 +138,18 @@ export function EmailVerificationModal({ onClose, onVerified }) {
               maxLength={6}
             />
 
-            <button
-              type="button"
-              className="btn--link"
-              onClick={() => {
-                setCode('');
-                setPhase('email');
-              }}
-            >
-              Use a different email address
-            </button>
+            {!lockEmail && (
+              <button
+                type="button"
+                className="btn--link"
+                onClick={() => {
+                  setCode('');
+                  setPhase('email');
+                }}
+              >
+                Use a different email address
+              </button>
+            )}
           </>
         )}
       </form>

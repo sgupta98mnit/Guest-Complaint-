@@ -11,6 +11,7 @@ import {
   FIELD_LABELS,
 } from '../../validation.js';
 
+import { EmailVerificationModal } from './EmailVerificationModal.jsx';
 import { GettingStarted } from './steps/GettingStarted.jsx';
 import { ComplaintType } from './steps/ComplaintType.jsx';
 import { ComplaintDetails } from './steps/ComplaintDetails.jsx';
@@ -50,6 +51,11 @@ export function GuestWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [banner, setBanner] = useState(null);
   const [trackingId, setTrackingId] = useState(null);
+
+  // The verification token starts in router state but lives here, because it can
+  // be replaced without leaving the wizard - see `reverify` below.
+  const [token, setToken] = useState(verificationToken);
+  const [reverify, setReverify] = useState(false);
 
   const headingRef = useRef(null);
   const isConfirmation = stepIndex === CONFIRMATION_INDEX;
@@ -101,11 +107,11 @@ export function GuestWizard() {
     setStepIndex((index) => Math.max(index - 1, 0));
   }
 
-  async function submit() {
+  async function submit(overrideToken) {
     setSubmitting(true);
     setBanner(null);
     try {
-      const result = await api.submitComplaint(form, verificationToken);
+      const result = await api.submitComplaint(form, overrideToken ?? token);
       setTrackingId(result.trackingId);
       setErrors({});
       setStepIndex(CONFIRMATION_INDEX);
@@ -118,7 +124,12 @@ export function GuestWizard() {
         const target = firstStepWithErrors(err.errors);
         if (target !== null && target !== stepIndex) setStepIndex(target);
       } else if (err.reason === 'unverified' || err.reason === 'email_mismatch') {
-        setBanner(`${err.message} Start the filing again to verify your email address.`);
+        // Verification state is held in server memory, so it is lost if the API
+        // restarts and it expires after 30 minutes - both of which can happen
+        // while someone is part-way through a long form. Sending the filer back
+        // to the start would destroy everything they had typed, so re-verify in
+        // place and retry with the completed form intact.
+        setReverify(true);
       } else {
         setBanner(err.message);
       }
@@ -132,6 +143,27 @@ export function GuestWizard() {
   if (!verificationToken && !trackingId) {
     return <Navigate to="/" replace />;
   }
+
+  const reverifyModal = reverify && (
+    <EmailVerificationModal
+      initialEmail={form.complainant.email}
+      lockEmail
+      intro="Your verification has expired, so the complaint was not submitted. Nothing you entered has been lost - request a new code to finish submitting."
+      onClose={() => {
+        setReverify(false);
+        setBanner(
+          'Your complaint was not submitted. Verify your email address again and press Submit.',
+        );
+      }}
+      onVerified={({ verificationToken: fresh }) => {
+        setToken(fresh);
+        setReverify(false);
+        // Retry immediately with the new token - state updates are async, so it
+        // is passed directly rather than read back from `token`.
+        submit(fresh);
+      }}
+    />
+  );
 
   const stepProps = { form, update, updateMany, errors, reference, verifiedEmail };
 
@@ -195,6 +227,8 @@ export function GuestWizard() {
           </div>
         )}
       </div>
+
+      {reverifyModal}
     </>
   );
 }

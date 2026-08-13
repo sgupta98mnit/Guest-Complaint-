@@ -320,6 +320,40 @@ describe('POST /api/complaints', () => {
     assert.ok(res.body.errors['complainant.orgName']);
   });
 
+  test('a rejected submission persists nothing and can be retried after re-verifying', async () => {
+    // The failure mode this guards: verification state lives in server memory,
+    // so a restart or a 30-minute expiry invalidates a token while someone is
+    // part-way through the form. The retry must succeed with the same payload
+    // and must not leave a half-written or duplicate complaint behind.
+    const payload = validSubmission('retry-after-expiry@example.org');
+    payload.fae.orgName = 'Retry Path Sentinel Org';
+
+    const stale = await api('POST', '/api/complaints', {
+      body: payload,
+      headers: { 'x-verification-token': 'token-from-a-dead-process' },
+    });
+    assert.equal(stale.status, 403);
+    assert.equal(stale.body.reason, 'unverified');
+
+    const token = await reviewerToken();
+    const before = await api('GET', '/api/complaints', authed(token));
+    assert.equal(
+      before.body.complaints.filter((c) => c.faeOrgName === 'Retry Path Sentinel Org').length,
+      0,
+      'the rejected submission must not have been written',
+    );
+
+    const retried = await submit(payload);
+    assert.equal(retried.status, 201);
+
+    const after = await api('GET', '/api/complaints', authed(token));
+    assert.equal(
+      after.body.complaints.filter((c) => c.faeOrgName === 'Retry Path Sentinel Org').length,
+      1,
+      'the retry must create exactly one complaint',
+    );
+  });
+
   test('refuses when the verified email differs from the complaint email', async () => {
     const token = await getVerificationToken('verified-as@example.org');
     const payload = validSubmission('filed-as-somebody-else@example.org');

@@ -373,9 +373,12 @@ restarts on boot. Two things to know:
 
 - **`NODE_ENV=production` matters.** It disables CORS, stops the OTP code from being returned in
   the API response or written to the log, and is what makes the demo affordances disappear.
-- **In-memory state is lost on restart.** Reviewer tokens and pending OTP codes live in process
-  memory, so a redeploy signs the reviewer out and invalidates any code mid-flight. Complaints
-  themselves are on disk and survive — back up `server/db/asett.db`.
+- **In-memory state is lost on restart.** Reviewer tokens, pending OTP codes, and verification
+  tokens live in process memory, so a redeploy signs the reviewer out and invalidates verification
+  mid-flight. Both cases are handled rather than left to fail: the reviewer is returned to the
+  login screen, and a guest whose verification died is offered a new code **in place**, keeping
+  everything they had already entered. Complaints themselves are on disk and survive — back up
+  `server/db/asett.db`.
 
 ---
 
