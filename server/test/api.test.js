@@ -3,6 +3,9 @@
 // below - static imports are hoisted and would run first.
 process.env.ASETT_DB_PATH = ':memory:';
 process.env.NODE_ENV = 'test';
+// The suite fires far more requests than a human would; the limiter is
+// exercised by its own test with a dedicated app instead.
+process.env.DISABLE_RATE_LIMIT = 'true';
 
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,6 +46,11 @@ async function reviewerToken() {
 
 const authed = (token) => ({ headers: { authorization: `Bearer ${token}` } });
 
+// Verification throttles resends per address, so every submission gets its own
+// email. Tests that care about a specific address override it.
+let emailSeq = 0;
+const uniqueEmail = () => `filer-${(emailSeq += 1)}@example.org`;
+
 /** A complete, valid submission. Tests clone this and break specific fields. */
 function validSubmission(overrides = {}) {
   return {
@@ -57,7 +65,7 @@ function validSubmission(overrides = {}) {
     complainant: {
       firstName: 'Dana',
       lastName: 'Whitfield',
-      email: 'd.whitfield@example.org',
+      email: uniqueEmail(),
       phone: '(555) 014-8823',
       role: 'Health care provider',
       anonymous: false,
@@ -76,7 +84,29 @@ function validSubmission(overrides = {}) {
   };
 }
 
-const submit = (payload) => api('POST', '/api/complaints', { body: payload });
+/** Walk the OTP flow and return a redeemable verification token. */
+async function getVerificationToken(email) {
+  const requested = await api('POST', '/api/verification/request', { body: { email } });
+  assert.equal(requested.status, 200);
+  const verified = await api('POST', '/api/verification/verify', {
+    body: { email, code: requested.body.devCode },
+  });
+  assert.equal(verified.status, 200);
+  return verified.body.token;
+}
+
+/** Submit through the real gate: verify the complainant's email, then post. */
+async function submit(payload) {
+  const token = await getVerificationToken(payload.complainant.email);
+  return api('POST', '/api/complaints', {
+    body: payload,
+    headers: { 'x-verification-token': token },
+  });
+}
+
+/** Post without a valid token, for tests that only care about validation. */
+const submitRaw = (payload, token = 'not-a-real-token') =>
+  api('POST', '/api/complaints', { body: payload, headers: { 'x-verification-token': token } });
 
 /** Find a complaint in the queue by its tracking id. */
 async function findByTracking(token, trackingId) {
@@ -115,8 +145,11 @@ describe('POST /api/complaints', () => {
     assert.equal(seq(second.body.trackingId), seq(first.body.trackingId) + 1);
   });
 
+  // Validation runs before the token is redeemed, so these can post with a
+  // bogus token and still assert on the 400 - which is itself the behaviour
+  // that stops a typo burning a single-use code.
   test('rejects missing required fields, keyed by section', async () => {
-    const res = await submit(
+    const res = await submitRaw(
       validSubmission({
         complaint: { description: '' },
         complainant: { lastName: '   ' },
@@ -131,19 +164,19 @@ describe('POST /api/complaints', () => {
   });
 
   test('rejects a future incident date', async () => {
-    const res = await submit(validSubmission({ complaint: { incidentDate: '2099-01-01' } }));
+    const res = await submitRaw(validSubmission({ complaint: { incidentDate: '2099-01-01' } }));
     assert.equal(res.status, 400);
     assert.match(res.body.errors['complaint.incidentDate'], /future/i);
   });
 
   test('rejects an impossible calendar date', async () => {
-    const res = await submit(validSubmission({ complaint: { incidentDate: '2026-02-30' } }));
+    const res = await submitRaw(validSubmission({ complaint: { incidentDate: '2026-02-30' } }));
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complaint.incidentDate']);
   });
 
   test('rejects a value the dropdown never offered', async () => {
-    const res = await submit(
+    const res = await submitRaw(
       validSubmission({ complaint: { transactionType: 'Not a real transaction' } }),
     );
     assert.equal(res.status, 400);
@@ -151,61 +184,133 @@ describe('POST /api/complaints', () => {
   });
 
   test('rejects a malformed previous tracking id', async () => {
-    const res = await submit(validSubmission({ complaint: { previousTrackingId: 'nope' } }));
+    const res = await submitRaw(validSubmission({ complaint: { previousTrackingId: 'nope' } }));
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complaint.previousTrackingId']);
+  });
+});
+
+/* ----------------------------------------------------- verification gate -- */
+
+describe('email verification', () => {
+  test('issues a 6-digit code and accepts it once', async () => {
+    const email = 'otp-happy@example.org';
+    const requested = await api('POST', '/api/verification/request', { body: { email } });
+    assert.match(requested.body.devCode, /^\d{6}$/);
+
+    const first = await api('POST', '/api/verification/verify', {
+      body: { email, code: requested.body.devCode },
+    });
+    assert.equal(first.status, 200);
+
+    // Codes are single use - replaying one must fail.
+    const replay = await api('POST', '/api/verification/verify', {
+      body: { email, code: requested.body.devCode },
+    });
+    assert.equal(replay.status, 400);
+  });
+
+  test('locks out after five wrong codes', async () => {
+    const email = 'otp-bruteforce@example.org';
+    const requested = await api('POST', '/api/verification/request', { body: { email } });
+    const wrong = requested.body.devCode === '000000' ? '111111' : '000000';
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const res = await api('POST', '/api/verification/verify', { body: { email, code: wrong } });
+      assert.equal(res.status, 400, `attempt ${attempt} should be rejected`);
+    }
+    assert.equal(
+      (await api('POST', '/api/verification/verify', { body: { email, code: wrong } })).status,
+      429,
+    );
+  });
+
+  test('throttles resends to the same address', async () => {
+    const email = 'otp-cooldown@example.org';
+    assert.equal((await api('POST', '/api/verification/request', { body: { email } })).status, 200);
+    assert.equal((await api('POST', '/api/verification/request', { body: { email } })).status, 429);
+  });
+
+  test('refuses to persist a complaint without a verification token', async () => {
+    const res = await api('POST', '/api/complaints', { body: validSubmission() });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.reason, 'unverified');
+  });
+
+  test('refuses when the verified email differs from the complaint email', async () => {
+    const token = await getVerificationToken('verified-as@example.org');
+    const res = await api('POST', '/api/complaints', {
+      body: validSubmission({ complainant: { email: 'filed-as-someone-else@example.org' } }),
+      headers: { 'x-verification-token': token },
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.reason, 'email_mismatch');
+  });
+
+  test('records when the email was verified', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+    const detail = await api('GET', `/api/complaints/${row.id}`, authed(token));
+    assert.ok(detail.body.complainant.emailVerifiedAt, 'expected a verification timestamp');
   });
 });
 
 /* -------------------------------------------------------------- anonymity -- */
 
 describe('anonymous filing', () => {
-  test('allows a submission with no name or email when anonymous', async () => {
+  test('allows a submission with no name when anonymous', async () => {
     const res = await submit(
       validSubmission({
-        complainant: {
-          anonymous: true,
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-        },
+        complainant: { anonymous: true, firstName: '', lastName: '', phone: '' },
       }),
     );
     assert.equal(res.status, 201);
   });
 
-  test('still requires a role when anonymous', async () => {
-    const res = await submit(
+  test('still requires a verified email when anonymous', async () => {
+    // This is the point of the whole gate: anonymity withholds the filer's
+    // name from the filed-against entity, it does not make the filing
+    // untraceable. Without it the public endpoint is an open spam channel.
+    const res = await submitRaw(
       validSubmission({
-        complainant: { anonymous: true, firstName: '', lastName: '', email: '', role: '' },
+        complainant: { anonymous: true, firstName: '', lastName: '', email: '' },
       }),
+    );
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['complainant.email']);
+  });
+
+  test('still requires a role when anonymous', async () => {
+    const res = await submitRaw(
+      validSubmission({ complainant: { anonymous: true, firstName: '', lastName: '', role: '' } }),
     );
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complainant.role']);
   });
 
-  test('requires name and email when not anonymous', async () => {
-    const res = await submit(
-      validSubmission({
-        complainant: { anonymous: false, firstName: '', lastName: '', email: '' },
-      }),
+  test('requires a name when not anonymous', async () => {
+    const res = await submitRaw(
+      validSubmission({ complainant: { anonymous: false, firstName: '', lastName: '' } }),
     );
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complainant.firstName']);
-    assert.ok(res.body.errors['complainant.email']);
+    assert.ok(res.body.errors['complainant.lastName']);
   });
 
-  test('labels an anonymous filer as such in the queue', async () => {
+  test('labels an anonymous filer as such in the queue, but keeps the email on record', async () => {
+    const email = 'anon-with-email@example.org';
     const submitted = await submit(
-      validSubmission({
-        complainant: { anonymous: true, firstName: '', lastName: '', email: '' },
-      }),
+      validSubmission({ complainant: { anonymous: true, firstName: '', lastName: '', email } }),
     );
     const token = await reviewerToken();
     const row = await findByTracking(token, submitted.body.trackingId);
     assert.equal(row.filer, 'Anonymous complainant');
     assert.equal(row.anonymous, true);
+
+    const detail = await api('GET', `/api/complaints/${row.id}`, authed(token));
+    assert.equal(detail.body.complainant.email, email);
+    assert.ok(detail.body.complainant.emailVerifiedAt);
   });
 });
 

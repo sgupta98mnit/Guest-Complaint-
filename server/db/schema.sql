@@ -36,15 +36,26 @@ CREATE TABLE IF NOT EXISTS tracking_sequence (
   last_seq              INTEGER NOT NULL
 );
 
--- The filer. Contact details are optional when `anonymous` is set: per the
--- handoff, filing anonymously withholds name and contact from the filed-against
--- entity, with the caveat that CMS may be unable to investigate without them.
+-- The filer.
+--
+-- A verified email is always recorded, including for anonymous filings. That is
+-- what makes a complaint attributable at all, and it is the gate that stops the
+-- public endpoint being a free-for-all: filing costs you a mailbox you control.
+--
+-- `anonymous` is therefore a DISCLOSURE control, not a collection control - it
+-- withholds the filer's identity from the filed-against entity, while CMS keeps
+-- a verified address on record. Name and phone stay optional when anonymous.
+--
+-- `email` is left nullable in the DDL rather than NOT NULL so that databases
+-- seeded before verification existed still open; the application requires it on
+-- every new submission.
 CREATE TABLE IF NOT EXISTS complainants (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id          INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
   first_name            TEXT,
   last_name             TEXT,
   email                 TEXT,
+  email_verified_at     TEXT,                        -- when the OTP was confirmed
   phone                 TEXT,
   role                  TEXT NOT NULL,
   anonymous             INTEGER NOT NULL DEFAULT 0   -- 0/1

@@ -59,6 +59,9 @@ const SUBMISSIONS = [
       incidentDate: '2026-06-02',
     },
     complainant: {
+      // Anonymous filings still carry a verified email - anonymity withholds
+      // the name from the filed-against entity, not the address from CMS.
+      email: 'anon-clearinghouse@example.org',
       role: 'Clearinghouse',
       anonymous: true,
     },
@@ -178,6 +181,7 @@ const SUBMISSIONS = [
       incidentDate: '2026-06-30',
     },
     complainant: {
+      email: 'anon-billing@example.org',
       role: 'Billing service',
       anonymous: true,
     },
@@ -272,7 +276,13 @@ function seed() {
   }
 
   for (const { action, status, createdAt, ...submission } of SUBMISSIONS) {
-    const { complaintId, trackingId } = persistSubmission(submission, { status, createdAt });
+    // Seeded filings are treated as verified at submission time, matching what
+    // the live flow records.
+    const { complaintId, trackingId } = persistSubmission(submission, {
+      status,
+      createdAt,
+      emailVerifiedAt: createdAt,
+    });
     if (action) {
       persistAction(complaintId, action.action, action.note, 'Jordan Reviewer');
     }

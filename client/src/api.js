@@ -14,11 +14,12 @@ const NAME_KEY = 'asett.reviewer.name';
  * same thrown object.
  */
 export class ApiError extends Error {
-  constructor(message, { status = 0, errors = {} } = {}) {
+  constructor(message, { status = 0, errors = {}, reason } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
+    this.reason = reason;
   }
 }
 
@@ -78,6 +79,7 @@ async function request(path, { method = 'GET', body, auth = false, headers = {} 
     throw new ApiError(payload?.error || 'Request failed.', {
       status: res.status,
       errors: payload?.errors,
+      reason: payload?.reason,
     });
   }
 
@@ -89,7 +91,18 @@ async function request(path, { method = 'GET', body, auth = false, headers = {} 
 export const api = {
   reference: () => request('/api/reference'),
 
-  submitComplaint: (payload) => request('/api/complaints', { method: 'POST', body: payload }),
+  requestVerificationCode: (email) =>
+    request('/api/verification/request', { method: 'POST', body: { email } }),
+
+  verifyCode: (email, code) =>
+    request('/api/verification/verify', { method: 'POST', body: { email, code } }),
+
+  submitComplaint: (payload, verificationToken) =>
+    request('/api/complaints', {
+      method: 'POST',
+      body: payload,
+      headers: { 'x-verification-token': verificationToken },
+    }),
 
   login: (username, password) =>
     request('/api/auth/login', { method: 'POST', body: { username, password } }),

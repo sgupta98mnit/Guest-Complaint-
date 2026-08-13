@@ -21,8 +21,8 @@ const insertComplaint = db.prepare(`
 
 const insertComplainant = db.prepare(`
   INSERT INTO complainants (
-    complaint_id, first_name, last_name, email, phone, role, anonymous
-  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    complaint_id, first_name, last_name, email, email_verified_at, phone, role, anonymous
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertFae = db.prepare(`
@@ -91,6 +91,7 @@ const toComplainant = (row) =>
     firstName: row.first_name,
     lastName: row.last_name,
     email: row.email,
+    emailVerifiedAt: row.email_verified_at,
     phone: row.phone,
     role: row.role,
     anonymous: Boolean(row.anonymous),
@@ -133,7 +134,7 @@ function filerLabel(row) {
  * to a reviewer, so all three inserts land together or none do.
  */
 export const persistSubmission = db.transaction(
-  ({ complaint, complainant, fae }, { status = 'submitted', createdAt } = {}) => {
+  ({ complaint, complainant, fae }, { status = 'submitted', createdAt, emailVerifiedAt } = {}) => {
     const trackingId = nextTrackingId();
 
     const { lastInsertRowid: complaintId } = insertComplaint.run(
@@ -158,6 +159,10 @@ export const persistSubmission = db.transaction(
       blankToNull(complainant.firstName),
       blankToNull(complainant.lastName),
       blankToNull(complainant.email),
+      // Written by the route once the verification token is redeemed, so the
+      // timestamp is the server's own record that this address was proven -
+      // never something the client can assert.
+      emailVerifiedAt ?? null,
       complainant.phone ? normalizePhone(complainant.phone) : null,
       blankToNull(complainant.role),
       anonymous ? 1 : 0,

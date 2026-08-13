@@ -146,17 +146,17 @@ export function validateStep(stepId, form) {
 
     if (isBlank(data.role)) errors['complainant.role'] = 'Your role is required.';
 
-    // Identity is required only when not filing anonymously.
+    // A verified email is required on every filing, anonymous or not - it is
+    // what makes the complaint attributable. Anonymity only withholds the name.
+    if (isBlank(data.email)) {
+      errors['complainant.email'] = 'Verify an email address before continuing.';
+    } else if (!EMAIL_RE.test(data.email.trim())) {
+      errors['complainant.email'] = 'Enter a valid email address.';
+    }
+
     if (!data.anonymous) {
       if (isBlank(data.firstName)) errors['complainant.firstName'] = 'First name is required.';
       if (isBlank(data.lastName)) errors['complainant.lastName'] = 'Last name is required.';
-      if (isBlank(data.email)) {
-        errors['complainant.email'] = 'Email is required.';
-      }
-    }
-
-    if (!isBlank(data.email) && !EMAIL_RE.test(data.email.trim())) {
-      errors['complainant.email'] = 'Enter a valid email address.';
     }
 
     if (!isBlank(data.phone)) {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireReviewer } from './auth.js';
+import { consumeToken } from '../lib/verification.js';
 import { validateSubmission, validateAction } from '../lib/validation.js';
 import {
   persistSubmission,
@@ -23,16 +24,41 @@ function parseId(raw) {
   return Number.isInteger(id) && id >= 1 ? id : null;
 }
 
-/** POST /api/complaints - public, no auth. Returns the tracking id. */
+/**
+ * POST /api/complaints - public, but gated on a redeemed verification token.
+ *
+ * Requires proof that the complainant's email was confirmed via the OTP step,
+ * and the token is bound to that exact address.
+ */
 complaintsRouter.post('/', (req, res) => {
   const payload = req.body || {};
 
+  // Validate before redeeming. The token is single-use, so burning it on a
+  // payload that was going to fail anyway would force the filer to re-verify
+  // their email over a typo.
   const errors = validateSubmission(payload);
   if (Object.keys(errors).length > 0) {
     return res.status(400).json({ errors });
   }
 
-  const { trackingId } = persistSubmission(payload);
+  const redeemed = consumeToken(
+    req.get('x-verification-token') || payload.verificationToken,
+    payload.complainant?.email,
+  );
+
+  if (!redeemed.ok) {
+    return res.status(403).json({
+      error:
+        redeemed.reason === 'email_mismatch'
+          ? 'Your verified email does not match the email on this complaint.'
+          : 'Verify your email address before submitting.',
+      reason: redeemed.reason,
+    });
+  }
+
+  const { trackingId } = persistSubmission(payload, {
+    emailVerifiedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+  });
 
   // Deliberately minimal. There is no guest retrieval endpoint, so there is
   // nothing useful to return beyond the tracking id - and handing out internal

@@ -18,3 +18,22 @@ db.pragma('foreign_keys = ON');
 
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
+
+/**
+ * Add a column if it is missing.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already has
+ * the table, so a column added to schema.sql would simply be absent at runtime
+ * on any existing database - including the volume behind the live deployment.
+ *
+ * This is not a migration system: no ordering, no version tracking, no down
+ * path. It is the smallest thing that keeps an existing database working, and a
+ * real project needs the real tool.
+ */
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+ensureColumn('complainants', 'email_verified_at', 'TEXT');

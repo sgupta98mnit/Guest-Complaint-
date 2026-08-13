@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { authRouter } from './routes/auth.js';
 import { complaintsRouter } from './routes/complaints.js';
 import { referenceRouter } from './routes/reference.js';
+import { verificationRouter } from './routes/verification.js';
+import { rateLimit } from './lib/rateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
@@ -31,8 +33,21 @@ export function createApp() {
   // Cheap liveness probe for the VPS process manager / reverse proxy.
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+  // Rate limits are registered BEFORE the routers they protect. Express matches
+  // in order, so a limiter mounted after its router never runs.
+  //
+  // These are the three unauthenticated write paths, each capped per IP:
+  // generous enough that a real filer never meets them, tight enough that a
+  // script does. Tests disable this with DISABLE_RATE_LIMIT.
+  if (process.env.DISABLE_RATE_LIMIT !== 'true') {
+    app.post('/api/auth/login', rateLimit({ name: 'login', limit: 10, windowMs: 15 * 60 * 1000 }));
+    app.use('/api/verification', rateLimit({ name: 'verify', limit: 20, windowMs: 15 * 60 * 1000 }));
+    app.post('/api/complaints', rateLimit({ name: 'submit', limit: 10, windowMs: 60 * 60 * 1000 }));
+  }
+
   app.use('/api/auth', authRouter);
   app.use('/api/reference', referenceRouter);
+  app.use('/api/verification', verificationRouter);
   app.use('/api/complaints', complaintsRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));

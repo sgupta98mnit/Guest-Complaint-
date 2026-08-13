@@ -154,14 +154,18 @@ export function validateComplainantSection(complainant = {}) {
     .required('role', complainant.role, 'Your role')
     .oneOf('role', complainant.role, COMPLAINANT_ROLES, 'role');
 
-  // Identity is required only when the filer is not anonymous. Filing
-  // anonymously withholds these from the filed-against entity, with the caveat
-  // that CMS may be unable to investigate without them.
+  // A verified email is required on every filing, anonymous or not. It is what
+  // makes a complaint attributable and what stops the public endpoint being
+  // anonymous in the useless sense - see schema.sql. Anonymity withholds the
+  // filer's NAME from the filed-against entity; it does not remove the address
+  // CMS holds.
+  bag.required('email', complainant.email, 'A verified email address');
+
+  // Name is optional when anonymous.
   if (!anonymous) {
     bag
       .required('firstName', complainant.firstName, 'First name')
-      .required('lastName', complainant.lastName, 'Last name')
-      .required('email', complainant.email, 'Email');
+      .required('lastName', complainant.lastName, 'Last name');
   }
 
   bag

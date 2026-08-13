@@ -800,6 +800,72 @@ legend {
   margin-top: 5px;
 }
 
+/* ------------------------------------------------------------------- modal */
+/* Not in the handoff - it has no dialog - so this follows the same tokens:
+   hairline borders, 6px radius, no shadow except the overlay lift. */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 27, 27, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 6px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal__header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal__header h2 {
+  font-size: 21px;
+}
+
+.modal__close {
+  background: none;
+  border: 0;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.modal__body {
+  padding: 24px;
+}
+
+.modal__body p {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.modal__footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* ------------------------------------------------------------------ wizard */
 
 .wizard__title-band {

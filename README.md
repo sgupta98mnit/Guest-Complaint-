@@ -6,8 +6,9 @@ the data model, endpoints, tokens, and per-screen behaviour).
 
 Two flows:
 
-1. **Guest complaint filing** — a public, no-account, seven-step wizard ending in a generated
-   tracking ID (`CM-26-00042`). No draft saving, and no way to view the complaint afterwards.
+1. **Guest complaint filing** — a public, no-account, seven-step wizard gated by email
+   verification, ending in a generated tracking ID (`CM-26-00042`). No draft saving, and no way to
+   view the complaint afterwards.
 2. **Internal intake review** — a reviewer signs in, works a queue, opens a complaint, and records
    a decision (Approve / Deny / Needs more info) with a mandatory note.
 
@@ -56,7 +57,7 @@ the header.
 | --- | --- |
 | `npm run setup` | Installs root, server, and client dependencies |
 | `npm run dev` | Runs the API on `:3001` and Vite on `:5173`, which proxies `/api` |
-| `npm test` | Backend test suite (25 tests) |
+| `npm test` | Backend test suite (35 tests) |
 | `npm run seed` | Loads eight synthetic complaints across every status |
 | `npm run seed:reset` | Wipes the database first, then re-seeds |
 | `npm run build` | Builds the client into `client/dist` |
@@ -66,12 +67,15 @@ To reset all state, run `npm run seed:reset`, or delete `server/db/asett.db` and
 
 ### Walking the demo
 
-1. Work through the wizard: complaint type → details → your information → filed-against entity →
+1. Press **Start complaint**. You'll be asked to verify an email address — **no mail is sent**; the
+   six-digit code appears in the dialog and in the API console.
+2. Work through the wizard: complaint type → details → your information → filed-against entity →
    review → submit. Note the tracking ID on the confirmation screen.
-2. Try **File anonymously** on the "Your information" step — name and email stop being required.
-3. Sign in as the reviewer. The queue shows stat tiles, status filter chips, and every complaint.
-4. Open a row. The decision panel stays disabled until you pick an action **and** write a note.
-5. Record a decision — the status pill updates, the timeline gains an entry, and the queue reflects
+3. Try **File anonymously** on the "Your information" step — your name stops being required, but
+   the verified email stays on record. The reviewer sees "Anonymous complainant".
+4. Sign in as the reviewer. The queue shows stat tiles, status filter chips, and every complaint.
+5. Open a row. The decision panel stays disabled until you pick an action **and** write a note.
+6. Record a decision — the status pill updates, the timeline gains an entry, and the queue reflects
    the new status.
 
 ---
@@ -90,11 +94,14 @@ server/
     validation.js       All field rules; returns a { 'section.field': message } map
     complaintStore.js   Every SQL statement and both write transactions
     trackingId.js       Atomic CM-YY-NNNNN generation
+    verification.js     Email OTP: hashed, expiring, attempt-capped, single-use
+    rateLimit.js        Per-IP fixed-window limiter for the public endpoints
   routes/
     auth.js             Reviewer login/logout + requireReviewer middleware
     complaints.js       Submit, list, detail, record action
+    verification.js     OTP request/verify
     reference.js        Serves reference data to the client
-  test/api.test.js      25 tests over the route layer
+  test/                 35 tests over the route layer + the rate limiter
 
 client/src/
   api.js                The only place fetch is called
@@ -139,10 +146,11 @@ erDiagram
         int complaint_id FK
         text first_name "optional when anonymous"
         text last_name "optional when anonymous"
-        text email "optional when anonymous"
+        text email "always required and verified"
+        text email_verified_at "server-written proof"
         text phone
         text role "always required"
-        int anonymous
+        int anonymous "withholds identity from the FAE"
     }
     filed_against_entities {
         int complaint_id FK
@@ -184,10 +192,16 @@ update and the action insert happen in a single transaction (`persistAction` in
 **Actions are never updated or deleted.** A second decision appends a row. The log is the audit
 trail; editing a past decision would destroy it.
 
-**Anonymity is a disclosure control with a collection consequence.** Filing anonymously withholds
-identity from the filed-against entity, and — per the handoff copy — CMS may be unable to
-investigate without it. So name and email become optional while `role` stays required, and the
-reviewer's detail screen shows "Withheld — filed anonymously" rather than blank fields.
+**Anonymity is a disclosure control, not a collection control.** Filing anonymously withholds the
+filer's name and phone from the filed-against entity. It does **not** remove the verified email CMS
+holds — `complainants.email` and `email_verified_at` are recorded on every filing, anonymous or
+not, and the reviewer's screen shows "Withheld — filed anonymously" rather than blank fields.
+
+This is a **deliberate deviation from the handoff**, which made email optional when anonymous. That
+version has no way to answer "who filed this?" for an anonymous complaint and turns the public
+endpoint into an unattributable write channel — anyone could fill the queue with junk and leave
+nothing to trace or block. Verification restores attribution for every filing while keeping the
+anonymity the copy actually promises.
 
 **Tracking numbers come from a counter table, not `COUNT(*)`.** A count-derived sequence has two
 bugs: two simultaneous submissions read the same count and collide on the `UNIQUE` index, and
@@ -204,7 +218,9 @@ All endpoints are under `/api`. Reviewer endpoints require `Authorization: Beare
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | Liveness probe |
 | `GET` | `/api/reference` | — | Picklists, statuses, decision options |
-| `POST` | `/api/complaints` | — | Submit a complaint; returns the tracking ID |
+| `POST` | `/api/verification/request` | — | Issue a 6-digit code for an email |
+| `POST` | `/api/verification/verify` | — | Exchange a code for a verification token |
+| `POST` | `/api/complaints` | verification token | Submit a complaint; returns the tracking ID |
 | `POST` | `/api/auth/login` | — | Reviewer sign in |
 | `POST` | `/api/auth/logout` | reviewer | Invalidate the token |
 | `GET` | `/api/complaints?status=` | reviewer | Queue rows + status counts for the tiles |
@@ -290,6 +306,15 @@ Agreement, and every record is synthetic.
   write a value the dropdown never offered.
 - **Request body cap** (1 MB) so an unauthenticated JSON endpoint is not a memory-exhaustion target.
 - **Bearer tokens in a header, not cookies** — CSRF is not applicable by construction.
+- **Email verification gates every filing.** Codes are stored as SHA-256 hashes, single-use,
+  expiring after 10 minutes, capped at 5 attempts, and resend-throttled to once per 30 seconds;
+  comparison is constant-time. The resulting token is **bound to the address it proved**, so a
+  filer cannot verify one email and submit under another. Delivery is the only mocked part — swap
+  `deliverCode()` in `lib/verification.js` for SES or SendGrid and the flow is unchanged.
+- **Per-IP rate limiting** on the three unauthenticated write paths: 10 submissions/hour,
+  20 verification requests/15min, 10 sign-in attempts/15min. Verification raises the *cost* of junk
+  filings; this caps the *rate*. In-memory and per-process, which is honest for one container but
+  wrong behind replicas — the real control belongs at the edge (Caddy's `rate_limit` or a WAF).
 
 ### Deliberately *not* built
 
@@ -298,7 +323,8 @@ Agreement, and every record is synthetic.
 | **Real reviewer auth** | One hardcoded account, random in-memory token, no expiry. Production: argon2id hashes, a sessions table so tokens survive restarts and can be revoked, idle + absolute timeouts, login rate limiting, MFA. |
 | **Encryption at rest** | The SQLite file is plaintext. Production: encrypted volume or a managed database with TDE. |
 | **Audit logging of reads** | Decisions are recorded, but *views* are not. A real system logs who read which complainant's contact details and when — especially for anonymous filings. |
-| **Rate limiting** | Nothing throttles the public submit endpoint or the login form. |
+| **Real email delivery** | Codes are printed to the server console instead of sent. Production needs a mail provider, bounce handling, and a suppression list. |
+| **Distributed rate limiting** | Counters are per-process, so they reset on redeploy and don't span replicas. |
 | **Transport security** | Plain HTTP locally; production terminates TLS at the reverse proxy. |
 
 ---
@@ -366,7 +392,7 @@ that by clearing the token on a 401 and returning to sign-in. Complaints are on 
 npm test
 ```
 
-25 tests on Node's built-in runner against an in-memory database — no test framework dependency.
+35 tests on Node's built-in runner against an in-memory database — no test framework dependency.
 They cover submission validation (future dates, impossible calendar dates, forged picklist values,
 malformed tracking IDs), the anonymity branch in both directions, tracking-ID sequencing, username
 normalization, the auth guards on every protected endpoint, status filtering and counts, and the

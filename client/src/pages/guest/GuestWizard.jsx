@@ -4,6 +4,7 @@ import { useReference } from '../../reference.jsx';
 import { ErrorSummary } from '../../components/ErrorSummary.jsx';
 import { ProgressRail } from './ProgressRail.jsx';
 import { ReviewSubmit } from './ReviewSubmit.jsx';
+import { EmailVerificationModal } from './EmailVerificationModal.jsx';
 import {
   GettingStarted,
   ComplaintType,
@@ -45,6 +46,12 @@ export function GuestWizard() {
   const [banner, setBanner] = useState(null);
   const [result, setResult] = useState(null);
 
+  // Proof that the filer controls the email on the complaint. Held in state
+  // rather than persisted: it is single-use and short-lived, so a reload should
+  // send them back through verification.
+  const [verification, setVerification] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
   const headingRef = useRef(null);
   const step = STEPS[stepIndex];
   const isConfirmation = stepIndex === CONFIRM_INDEX;
@@ -81,15 +88,33 @@ export function GuestWizard() {
   function restart() {
     setForm(emptyForm());
     setResult(null);
+    setVerification(null);
     setMaxVisited(0);
     goTo(0);
+  }
+
+  /** "Start complaint" opens the email gate; the wizard proper begins after it. */
+  function beginFiling() {
+    if (verification) {
+      goNext();
+      return;
+    }
+    setVerifying(true);
+  }
+
+  function onVerified({ email, verificationToken }) {
+    setVerification({ email, verificationToken });
+    // Seed the verified address into the form; step 4 shows it read-only.
+    setForm((prev) => ({ ...prev, complainant: { ...prev.complainant, email } }));
+    setVerifying(false);
+    goTo(1);
   }
 
   async function submit() {
     setSubmitting(true);
     setBanner(null);
     try {
-      const payload = await api.submitComplaint(form);
+      const payload = await api.submitComplaint(form, verification?.verificationToken);
       setResult({
         trackingId: payload.trackingId,
         receivedAt: new Date().toLocaleString(undefined, {
@@ -108,6 +133,13 @@ export function GuestWizard() {
         // that are not on screen.
         const target = firstStepWithErrors(err.errors);
         if (target !== null && target !== stepIndex) setStepIndex(target);
+      } else if (err.reason === 'unverified' || err.reason === 'email_mismatch') {
+        // Verification state lives in server memory and expires, so a restart or
+        // a slow filing can invalidate it mid-form. Discarding a completed
+        // wizard over that is a far worse outcome than the problem, so re-verify
+        // in place and keep everything they typed.
+        setVerification(null);
+        setVerifying(true);
       } else {
         setBanner(err.message);
       }
@@ -164,7 +196,7 @@ export function GuestWizard() {
             {/* "Exit without filing" clears the form rather than navigating away:
                 the wizard is the whole app, and a hard location change would
                 leave the mount point entirely on a subpath deployment. */}
-            {step.id === 'start' && <GettingStarted onStart={goNext} onExit={restart} />}
+            {step.id === 'start' && <GettingStarted onStart={beginFiling} onExit={restart} />}
             {step.id === 'type' && <ComplaintType {...stepProps} />}
             {step.id === 'details' && <ComplaintDetails {...stepProps} />}
             {step.id === 'complainant' && <YourInformation {...stepProps} />}
@@ -202,6 +234,10 @@ export function GuestWizard() {
           </div>
         </div>
       </div>
+
+      {verifying && (
+        <EmailVerificationModal onClose={() => setVerifying(false)} onVerified={onVerified} />
+      )}
     </>
   );
 }

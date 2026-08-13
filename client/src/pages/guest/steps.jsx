@@ -189,15 +189,20 @@ export function YourInformation({ form, set, errors, reference }) {
         </div>
 
         <div className="two-up">
+          {/* Read-only: this address was proven by the verification code, and
+              the server rejects a submission whose complainant email differs
+              from the verified one. An editable field would only produce a
+              confusing failure three steps later. */}
           <TextField
             id="complainant.email"
             label="Email"
             type="email"
-            required={!anonymous}
+            required
+            readOnly
             value={complainant.email}
             onChange={(value) => set('complainant', 'email', value)}
             error={errors['complainant.email']}
-            autoComplete="email"
+            hint="Verified. To file under a different address, start again."
           />
           <TextField
             id="complainant.phone"
@@ -225,7 +230,7 @@ export function YourInformation({ form, set, errors, reference }) {
         <CheckCard
           id="complainant.anonymous"
           label="File anonymously"
-          description="Your name and contact details are withheld from the filed-against entity. CMS may be unable to investigate without them."
+          description="Your name and phone number are withheld from the filed-against entity. CMS still holds your verified email so it can contact you, and may be unable to investigate without further detail."
           checked={anonymous}
           onChange={(value) => set('complainant', 'anonymous', value)}
         />
