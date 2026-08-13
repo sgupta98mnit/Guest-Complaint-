@@ -1,0 +1,18 @@
+{
+  "name": "asett-complaints",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HIPAA Administrative Simplification complaint filing and internal review - take-home prototype",
+  "scripts": {
+    "setup": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n api,web -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server run start",
+    "test": "npm --prefix server test",
+    "seed": "npm --prefix server run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

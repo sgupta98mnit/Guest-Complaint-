@@ -1,0 +1,16 @@
+node_modules/
+dist/
+
+# SQLite database + WAL sidecar files. The DB is ephemeral by design:
+# delete it to reset state, or run `npm run seed` to repopulate.
+server/db/*.db
+server/db/*.db-journal
+server/db/*.db-wal
+server/db/*.db-shm
+
+# Scratch DBs created by the test suite
+server/test/tmp/
+
+.env
+.env.local
+.DS_Store
