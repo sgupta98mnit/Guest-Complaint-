@@ -14,3 +14,6 @@ server/test/tmp/
 .env
 .env.local
 .DS_Store
+
+# Personal interview prep notes - local only, never published
+INTERVIEW-PREP.md
