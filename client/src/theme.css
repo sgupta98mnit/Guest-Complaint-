@@ -268,39 +268,39 @@ a {
 }
 
 /*
- * Viewport scaling.
+ * Viewport scaling for very large displays.
  *
- * The handoff fixes every size in px against a 1140px container. On a 1080p or
- * larger display that leaves the content as a small column of small text with
- * a lot of empty page around it. Rather than diverging from the specified type
- * scale - which would break the ratios the design depends on - the whole shell
- * is zoomed on wide viewports. Every proportion stays exactly as designed and
- * the page simply gets bigger with the screen.
+ * The handoff fixes every size in px against a 1140px container. That is the
+ * intended size and it is correct on an ordinary desktop, so nothing is scaled
+ * below 1800px - the design renders exactly as specified.
+ *
+ * Past that the column starts to look lost on the page, so the shell is zoomed
+ * gently. Two rules keep this from backfiring:
+ *
+ *   - every step is gated on min-height as well as min-width. Zoom divides the
+ *     usable viewport, so scaling by width alone on a 1920x1080 screen leaves
+ *     ~735px of vertical space and pushes the form below the fold.
+ *   - the steps are small. This is meant to stop a 4K display looking sparse,
+ *     not to re-do the type scale.
  *
  * `zoom` rather than `transform: scale()` because zoom participates in layout,
  * so the container recentres and nothing overflows.
  */
-@media (min-width: 1200px) {
+@media (min-width: 1800px) and (min-height: 1000px) {
   .app-shell {
     zoom: 1.1;
   }
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 2300px) and (min-height: 1200px) {
   .app-shell {
-    zoom: 1.2;
+    zoom: 1.22;
   }
 }
 
-@media (min-width: 1800px) {
+@media (min-width: 3000px) and (min-height: 1500px) {
   .app-shell {
-    zoom: 1.32;
-  }
-}
-
-@media (min-width: 2400px) {
-  .app-shell {
-    zoom: 1.5;
+    zoom: 1.4;
   }
 }
 
