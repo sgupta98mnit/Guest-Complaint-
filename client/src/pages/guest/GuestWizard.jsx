@@ -108,10 +108,15 @@ export function GuestWizard() {
   }
 
   async function submit(overrideToken) {
+    // Only a string is a token. Guarding the type means an accidental
+    // `onClick={submit}` - which would pass a click event here - degrades to
+    // using the stored token instead of sending an event object to the server.
+    const activeToken = typeof overrideToken === 'string' ? overrideToken : token;
+
     setSubmitting(true);
     setBanner(null);
     try {
-      const result = await api.submitComplaint(form, overrideToken ?? token);
+      const result = await api.submitComplaint(form, activeToken);
       setTrackingId(result.trackingId);
       setErrors({});
       setStepIndex(CONFIRMATION_INDEX);
@@ -208,7 +213,14 @@ export function GuestWizard() {
             </div>
 
             {step.id === 'review-submit' ? (
-              <button type="button" className="btn btn--primary" onClick={submit} disabled={submitting}>
+              // Wrapped rather than `onClick={submit}`, which would pass React's
+              // click event into submit()'s token argument.
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => submit()}
+                disabled={submitting}
+              >
                 {submitting ? 'Submitting...' : 'Submit'}
               </button>
             ) : (
