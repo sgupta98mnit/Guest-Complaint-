@@ -417,6 +417,72 @@ textarea.field__control {
   margin: 0.15rem 0 0;
 }
 
+/* ---------------------------------------------------- organization picker */
+
+.org-combobox {
+  position: relative;
+}
+
+.org-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--color-white);
+  border: 1px solid var(--color-base);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.org-results__item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-gray-lightest);
+}
+
+.org-results__item:last-child {
+  border-bottom: 0;
+}
+
+/* Highlight follows the arrow keys, so it must be a class rather than :hover -
+   DOM focus stays on the input the whole time. */
+.org-results__item.is-highlighted {
+  background: var(--color-primary-alt-light);
+}
+
+.org-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-gray-light);
+  border-left: 6px solid var(--color-primary-alt);
+  border-radius: var(--radius);
+  background: var(--color-white);
+  padding: 0.6rem 0.75rem;
+}
+
+.org-add {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-weight: 700;
+}
+
+/* Fields filled in from the selected organization. Greyed to signal they are
+   derived rather than typed, matching the source application. */
+.field__control[readonly] {
+  background: var(--color-gray-lightest);
+  color: var(--color-muted);
+  border-color: var(--color-gray-light);
+}
+
 /* ------------------------------------------------------------------ alerts */
 
 .alert {

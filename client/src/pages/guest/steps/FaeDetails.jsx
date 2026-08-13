@@ -1,17 +1,23 @@
 import { SectionTitle, SelectField, TextField } from '../../../components/Field.jsx';
+import {
+  OrganizationPicker,
+  orgSelectPatch,
+  ORG_CLEAR_PATCH,
+} from '../../../components/OrganizationPicker.jsx';
 
 /**
  * The Filed-Against Entity: the organization the complaint is about.
  *
- * The live tool backs the organization field with a Salesforce lookup plus a
- * "New Organization" modal. Here it is a plain text field - see the README on
- * why the lookup was cut.
+ * Uses the same organization lookup as the complainant step, which is the point
+ * of making organizations a shared record - an FAE named in one complaint is
+ * findable when the next filer names the same one.
  */
-export function FaeDetails({ form, update, errors, reference }) {
+export function FaeDetails({ form, update, updateMany, errors, reference }) {
   if (!reference) return <p>Loading options...</p>;
 
   const { fae } = form;
   const set = (field) => (value) => update('fae', field, value);
+  const fromOrg = Boolean(fae.orgId);
 
   return (
     <>
@@ -19,14 +25,21 @@ export function FaeDetails({ form, update, errors, reference }) {
 
       <SectionTitle>FAE Organization Information</SectionTitle>
       <div className="grid-2">
-        <TextField
+        <OrganizationPicker
           id="fae.orgName"
           label="FAE Organization"
           required
-          value={fae.orgName}
-          onChange={set('orgName')}
+          value={{
+            orgId: fae.orgId,
+            orgName: fae.orgName,
+            orgCity: fae.city,
+            orgState: fae.state,
+          }}
+          onSelect={(organization) => updateMany('fae', orgSelectPatch(organization))}
+          onClear={() => updateMany('fae', ORG_CLEAR_PATCH)}
           error={errors['fae.orgName']}
-          hint="The organization you believe is out of compliance."
+          hint="Search for the organization you believe is out of compliance."
+          states={reference.states}
         />
         <SelectField
           id="fae.orgType"
@@ -59,6 +72,12 @@ export function FaeDetails({ form, update, errors, reference }) {
       </div>
 
       <SectionTitle>FAE Address Information</SectionTitle>
+      {fromOrg && (
+        <p className="text-small text-muted">
+          Address details come from the selected organization. Choose{' '}
+          <strong>Change</strong> above to use a different one.
+        </p>
+      )}
       <div className="grid-2">
         <TextField
           id="fae.addressLine1"
@@ -66,6 +85,7 @@ export function FaeDetails({ form, update, errors, reference }) {
           value={fae.addressLine1}
           onChange={set('addressLine1')}
           error={errors['fae.addressLine1']}
+          readOnly={fromOrg}
         />
         <TextField
           id="fae.addressLine2"
@@ -73,6 +93,7 @@ export function FaeDetails({ form, update, errors, reference }) {
           value={fae.addressLine2}
           onChange={set('addressLine2')}
           error={errors['fae.addressLine2']}
+          readOnly={fromOrg}
         />
         <TextField
           id="fae.city"
@@ -80,21 +101,34 @@ export function FaeDetails({ form, update, errors, reference }) {
           value={fae.city}
           onChange={set('city')}
           error={errors['fae.city']}
+          readOnly={fromOrg}
         />
-        <SelectField
-          id="fae.state"
-          label="State/Territory"
-          value={fae.state}
-          onChange={set('state')}
-          options={reference.states}
-          error={errors['fae.state']}
-        />
+        {fromOrg ? (
+          <TextField
+            id="fae.state"
+            label="State/Territory"
+            value={fae.state}
+            onChange={set('state')}
+            error={errors['fae.state']}
+            readOnly
+          />
+        ) : (
+          <SelectField
+            id="fae.state"
+            label="State/Territory"
+            value={fae.state}
+            onChange={set('state')}
+            options={reference.states}
+            error={errors['fae.state']}
+          />
+        )}
         <TextField
           id="fae.zip"
           label="ZIP Code"
           value={fae.zip}
           onChange={set('zip')}
           error={errors['fae.zip']}
+          readOnly={fromOrg}
         />
       </div>
 

@@ -150,6 +150,61 @@ describe('email verification (OTP)', () => {
   });
 });
 
+/* ----------------------------------------------------------- organizations -- */
+
+describe('organizations', () => {
+  const org = {
+    name: 'Test Organization Alpha',
+    addressLine1: '1 Test Way',
+    city: 'Buffalo',
+    state: 'New York',
+    zip: '14214',
+    phone: '(716) 555-0100',
+  };
+
+  test('creates an organization and normalizes its phone', async () => {
+    const res = await api('POST', '/api/organizations', { body: org });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.created, true);
+    assert.equal(res.body.organization.name, org.name);
+    assert.equal(res.body.organization.phone, '7165550100');
+  });
+
+  test('returns the existing record instead of failing on a duplicate name', async () => {
+    const res = await api('POST', '/api/organizations', {
+      body: { ...org, name: 'test organization alpha' }, // different case
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.created, false);
+    assert.equal(res.body.organization.name, org.name);
+  });
+
+  test('requires a complete address', async () => {
+    const res = await api('POST', '/api/organizations', { body: { name: 'Incomplete Org' } });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors.addressLine1);
+    assert.ok(res.body.errors.city);
+    assert.ok(res.body.errors.zip);
+  });
+
+  test('searches by partial name', async () => {
+    const res = await api('GET', '/api/organizations?q=organization%20alph');
+    assert.equal(res.status, 200);
+    assert.ok(res.body.organizations.some((o) => o.name === org.name));
+  });
+
+  test('ignores searches shorter than two characters', async () => {
+    const res = await api('GET', '/api/organizations?q=a');
+    assert.deepEqual(res.body.organizations, []);
+  });
+
+  test('treats LIKE wildcards as literal characters', async () => {
+    // Without escaping, "%" would match every organization in the table.
+    const res = await api('GET', '/api/organizations?q=%25%25');
+    assert.deepEqual(res.body.organizations, []);
+  });
+});
+
 /* --------------------------------------------------------------- submission -- */
 
 describe('POST /api/complaints', () => {
@@ -220,6 +275,49 @@ describe('POST /api/complaints', () => {
     });
     assert.equal(res.status, 403);
     assert.equal(res.body.reason, 'unverified');
+  });
+
+  test('links the complaint to a real organization record', async () => {
+    const { body: made } = await api('POST', '/api/organizations', {
+      body: {
+        name: 'Linked Hospital Group',
+        addressLine1: '9 Linked Road',
+        city: 'Buffalo',
+        state: 'New York',
+        zip: '14214',
+      },
+    });
+
+    const payload = validSubmission('org-linked@example.org');
+    payload.complainant.orgId = made.organization.id;
+    payload.complainant.orgName = made.organization.name;
+
+    const submitted = await submit(payload);
+    assert.equal(submitted.status, 201);
+
+    const token = await reviewerToken();
+    const list = await api('GET', '/api/complaints', authed(token));
+    const target = list.body.complaints.find(
+      (c) => c.trackingId === submitted.body.trackingId,
+    );
+    const detail = await api('GET', `/api/complaints/${target.id}`, authed(token));
+
+    assert.equal(detail.body.complainant.orgId, made.organization.id);
+    assert.equal(detail.body.complainant.orgName, 'Linked Hospital Group');
+  });
+
+  test('rejects a submission naming an organization that does not exist', async () => {
+    const payload = validSubmission('bad-org@example.org');
+    payload.complainant.orgId = 999999;
+
+    const token = await getVerificationToken(payload.complainant.email);
+    const res = await api('POST', '/api/complaints', {
+      body: payload,
+      headers: { 'x-verification-token': token },
+    });
+
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['complainant.orgName']);
   });
 
   test('refuses when the verified email differs from the complaint email', async () => {

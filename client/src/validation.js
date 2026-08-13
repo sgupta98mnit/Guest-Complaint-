@@ -213,6 +213,7 @@ export function emptyForm() {
     },
     complainant: {
       anonymous: false,
+      orgId: null,
       orgName: '',
       orgType: '',
       firstName: '',
@@ -226,6 +227,7 @@ export function emptyForm() {
       phone: '',
     },
     fae: {
+      orgId: null,
       orgName: '',
       orgType: '',
       contactFirstName: '',

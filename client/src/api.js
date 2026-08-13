@@ -92,6 +92,12 @@ export const api = {
   verifyCode: (email, code) =>
     request('/api/verification/verify', { method: 'POST', body: { email, code } }),
 
+  searchOrganizations: (query) =>
+    request(`/api/organizations?q=${encodeURIComponent(query)}`),
+
+  createOrganization: (organization) =>
+    request('/api/organizations', { method: 'POST', body: organization }),
+
   submitComplaint: (payload, verificationToken) =>
     request('/api/complaints', {
       method: 'POST',

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireReviewer } from './auth.js';
 import { consumeToken } from '../lib/verification.js';
 import { validateSubmission, validateReview } from '../lib/validation.js';
+import { getOrganization } from '../lib/organizationStore.js';
 import {
   persistSubmission,
   persistReview,
@@ -33,6 +34,17 @@ complaintsRouter.post('/', (req, res) => {
   const payload = req.body || {};
 
   const errors = validateSubmission(payload);
+
+  // Organization references are checked here rather than in validation.js,
+  // which is deliberately pure and knows nothing about the database. The
+  // foreign key would catch a bad id anyway, but as a 500 rather than a 400.
+  for (const section of ['complainant', 'fae']) {
+    const orgId = payload[section]?.orgId;
+    if (orgId != null && !getOrganization(orgId)) {
+      errors[`${section}.orgName`] = 'Select an organization from the list, or create a new one.';
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return res.status(400).json({ errors });
   }

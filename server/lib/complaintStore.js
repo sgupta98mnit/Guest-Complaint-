@@ -20,16 +20,16 @@ const insertComplaint = db.prepare(`
 
 const insertComplainant = db.prepare(`
   INSERT INTO complainants (
-    complaint_id, anonymous, org_name, org_type, first_name, last_name,
+    complaint_id, anonymous, org_id, org_name, org_type, first_name, last_name,
     address_line1, address_line2, city, state, zip, email, phone
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertFae = db.prepare(`
   INSERT INTO fae_entities (
-    complaint_id, org_name, org_type, contact_first_name, contact_last_name,
+    complaint_id, org_id, org_name, org_type, contact_first_name, contact_last_name,
     address_line1, address_line2, city, state, zip, email, phone
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertReview = db.prepare(`
@@ -85,6 +85,7 @@ const toComplaint = (row) => ({
 const toComplainant = (row) =>
   row && {
     anonymous: Boolean(row.anonymous),
+    orgId: row.org_id,
     orgName: row.org_name,
     orgType: row.org_type,
     firstName: row.first_name,
@@ -100,6 +101,7 @@ const toComplainant = (row) =>
 
 const toFae = (row) =>
   row && {
+    orgId: row.org_id,
     orgName: row.org_name,
     orgType: row.org_type,
     contactFirstName: row.contact_first_name,
@@ -150,6 +152,7 @@ export const persistSubmission = db.transaction(
     insertComplainant.run(
       complaintId,
       complainant.anonymous ? 1 : 0,
+      complainant.orgId ?? null,
       blankToNull(complainant.orgName),
       blankToNull(complainant.orgType),
       blankToNull(complainant.firstName),
@@ -165,6 +168,7 @@ export const persistSubmission = db.transaction(
 
     insertFae.run(
       complaintId,
+      fae.orgId ?? null,
       blankToNull(fae.orgName),
       blankToNull(fae.orgType),
       blankToNull(fae.contactFirstName),

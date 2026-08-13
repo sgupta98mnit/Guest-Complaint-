@@ -211,6 +211,34 @@ export function validateSubmission(payload = {}, now = new Date()) {
   };
 }
 
+/**
+ * A new organization created inline from the wizard.
+ *
+ * Address and city/state/ZIP are required here even though they are optional on
+ * the complaint itself: an organization record is reused across complaints, so
+ * it is worth insisting it be complete at the point of creation rather than
+ * accumulating half-filled records that every later filer inherits.
+ */
+export function validateOrganization(org = {}) {
+  const bag = new ErrorBag('');
+
+  bag
+    .required('name', org.name, 'Organization name')
+    .maxLength('name', org.name, MAX.short, 'Organization name')
+    .required('addressLine1', org.addressLine1, 'Address line 1')
+    .maxLength('addressLine1', org.addressLine1, MAX.short, 'Address line 1')
+    .maxLength('addressLine2', org.addressLine2, MAX.short, 'Address line 2')
+    .required('city', org.city, 'City/town')
+    .maxLength('city', org.city, MAX.short, 'City/town')
+    .required('state', org.state, 'State/province')
+    .oneOf('state', org.state, STATES, 'state')
+    .required('zip', org.zip, 'ZIP code')
+    .zip('zip', org.zip, 'ZIP code')
+    .phone('phone', org.phone, 'phone number');
+
+  return bag.errors;
+}
+
 export function validateReview(payload = {}) {
   const bag = new ErrorBag('');
 

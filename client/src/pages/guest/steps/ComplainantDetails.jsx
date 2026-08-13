@@ -1,10 +1,19 @@
 import { RadioGroup, SectionTitle, SelectField, TextField } from '../../../components/Field.jsx';
+import {
+  OrganizationPicker,
+  orgSelectPatch,
+  ORG_CLEAR_PATCH,
+} from '../../../components/OrganizationPicker.jsx';
 
-export function ComplainantDetails({ form, update, errors, reference, verifiedEmail }) {
+export function ComplainantDetails({ form, update, updateMany, errors, reference, verifiedEmail }) {
   if (!reference) return <p>Loading options...</p>;
 
   const { complainant } = form;
   const set = (field) => (value) => update('complainant', field, value);
+
+  // Address belongs to the organization, so once one is chosen these fields are
+  // derived rather than entered - shown read-only, matching the source form.
+  const fromOrg = Boolean(complainant.orgId);
 
   return (
     <>
@@ -32,14 +41,20 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
 
       <SectionTitle>Complainant Organization Information</SectionTitle>
       <div className="grid-2">
-        <TextField
+        <OrganizationPicker
           id="complainant.orgName"
           label="Complainant Organization"
           required
-          value={complainant.orgName}
-          onChange={set('orgName')}
+          value={{
+            orgId: complainant.orgId,
+            orgName: complainant.orgName,
+            orgCity: complainant.city,
+            orgState: complainant.state,
+          }}
+          onSelect={(organization) => updateMany('complainant', orgSelectPatch(organization))}
+          onClear={() => updateMany('complainant', ORG_CLEAR_PATCH)}
           error={errors['complainant.orgName']}
-          autoComplete="organization"
+          states={reference.states}
         />
         <SelectField
           id="complainant.orgType"
@@ -75,6 +90,12 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
       </div>
 
       <SectionTitle>Complainant Address Information</SectionTitle>
+      {fromOrg && (
+        <p className="text-small text-muted">
+          Address details come from the selected organization. Choose{' '}
+          <strong>Change</strong> above to use a different one.
+        </p>
+      )}
       <div className="grid-2">
         <TextField
           id="complainant.addressLine1"
@@ -83,6 +104,7 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
           onChange={set('addressLine1')}
           error={errors['complainant.addressLine1']}
           autoComplete="address-line1"
+          readOnly={fromOrg}
         />
         <TextField
           id="complainant.addressLine2"
@@ -91,6 +113,7 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
           onChange={set('addressLine2')}
           error={errors['complainant.addressLine2']}
           autoComplete="address-line2"
+          readOnly={fromOrg}
         />
         <TextField
           id="complainant.city"
@@ -99,15 +122,30 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
           onChange={set('city')}
           error={errors['complainant.city']}
           autoComplete="address-level2"
+          readOnly={fromOrg}
         />
-        <SelectField
-          id="complainant.state"
-          label="State/Territory"
-          value={complainant.state}
-          onChange={set('state')}
-          options={reference.states}
-          error={errors['complainant.state']}
-        />
+        {/* A select has no read-only mode, and disabling it would drop it out of
+            the tab order. Swapping in a read-only text field keeps the derived
+            value reachable and announced. */}
+        {fromOrg ? (
+          <TextField
+            id="complainant.state"
+            label="State/Territory"
+            value={complainant.state}
+            onChange={set('state')}
+            error={errors['complainant.state']}
+            readOnly
+          />
+        ) : (
+          <SelectField
+            id="complainant.state"
+            label="State/Territory"
+            value={complainant.state}
+            onChange={set('state')}
+            options={reference.states}
+            error={errors['complainant.state']}
+          />
+        )}
         <TextField
           id="complainant.zip"
           label="ZIP Code"
@@ -115,6 +153,7 @@ export function ComplainantDetails({ form, update, errors, reference, verifiedEm
           onChange={set('zip')}
           error={errors['complainant.zip']}
           autoComplete="postal-code"
+          readOnly={fromOrg}
         />
       </div>
 

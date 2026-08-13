@@ -30,10 +30,38 @@ CREATE TABLE IF NOT EXISTS tracking_sequence (
   last_seq            INTEGER NOT NULL
 );
 
+-- Organizations are shared records, looked up by name and reused across
+-- complaints, mirroring the sandbox's organization lookup + "New Organization"
+-- modal. An address belongs to the organization rather than to the person
+-- filing, which is why the complainant address fields are derived from here.
+--
+-- Dedupe is on name alone, case-insensitively. That is a simplification: real
+-- organizations share names across cities, so the natural key would include the
+-- address or - more appropriately for this domain - the NPI or EIN, which are
+-- themselves among the identifiers ASETT exists to enforce.
+CREATE TABLE IF NOT EXISTS organizations (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  name                TEXT NOT NULL,
+  address_line1       TEXT,
+  address_line2       TEXT,
+  city                TEXT,
+  state               TEXT,
+  zip                 TEXT,
+  phone               TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name
+  ON organizations(name COLLATE NOCASE);
+
 CREATE TABLE IF NOT EXISTS complainants (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id        INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
   anonymous           INTEGER NOT NULL DEFAULT 0,  -- 0/1
+  -- org_id links to the canonical record; org_name is the name as filed. Keeping
+  -- the snapshot means a complaint still reads correctly if the organization is
+  -- later renamed.
+  org_id              INTEGER REFERENCES organizations(id),
   org_name            TEXT,
   org_type            TEXT,
   first_name          TEXT,
@@ -50,6 +78,7 @@ CREATE TABLE IF NOT EXISTS complainants (
 CREATE TABLE IF NOT EXISTS fae_entities (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id        INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+  org_id              INTEGER REFERENCES organizations(id),
   org_name            TEXT NOT NULL,
   org_type            TEXT,
   contact_first_name  TEXT,

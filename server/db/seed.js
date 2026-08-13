@@ -1,5 +1,6 @@
 import { db } from './index.js';
 import { persistSubmission, persistReview } from '../lib/complaintStore.js';
+import { createOrganization } from '../lib/organizationStore.js';
 
 // Synthetic demo data so the reviewer queue is not empty on a fresh clone.
 // Entirely fabricated - no real people, organizations, or health information.
@@ -173,6 +174,7 @@ function seed() {
       DELETE FROM complainants;
       DELETE FROM fae_entities;
       DELETE FROM complaints;
+      DELETE FROM organizations;
       DELETE FROM tracking_sequence;
     `);
     console.log('[seed] cleared existing data');
@@ -186,7 +188,25 @@ function seed() {
     return;
   }
 
+  // Register each party as a real organization first, so the wizard's lookup
+  // has something to find and the seeded complaints reference canonical records
+  // rather than dangling name strings.
+  const register = (party) => {
+    const { organization } = createOrganization({
+      name: party.orgName,
+      addressLine1: party.addressLine1,
+      city: party.city,
+      state: party.state,
+      zip: party.zip,
+      phone: party.phone,
+    });
+    party.orgId = organization.id;
+  };
+
   for (const { review, ...submission } of SUBMISSIONS) {
+    register(submission.complainant);
+    register(submission.fae);
+
     const { complaintId, trackingId } = persistSubmission(submission);
     if (review) {
       persistReview(complaintId, review.action, review.note, 'Jordan Reviewer');

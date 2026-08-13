@@ -69,7 +69,31 @@ Follow one complaint from click to database.
 Failure messages are deliberately identical for "never requested", "expired", and "wrong code", so
 the endpoint cannot be used to discover which addresses have codes pending.
 
-### 2.2 The wizard
+### 2.2 Choosing an organization
+
+Both the complainant and FAE steps use `OrganizationPicker`, an ARIA combobox rather than a styled
+text input: the input carries `aria-expanded` and `aria-activedescendant`, results are a real
+`listbox`, and arrow keys move a highlight class **without moving DOM focus**. That last detail is
+what makes it announce as a combobox instead of as a text field with some mysterious clickable text
+underneath.
+
+Search is debounced 250ms and ignores terms under two characters. On the server,
+`searchOrganizations` escapes `%`, `_`, and `\` before building the `LIKE` pattern — otherwise a
+user typing `%` matches every row — and orders prefix matches ahead of substring matches so typing
+`riv` surfaces "Riverbend" above "Great River".
+
+Selecting an organization calls `updateMany()` with `orgSelectPatch()`, rewriting the name and five
+address fields in **one** state update. Six sequential `update()` calls would each read the same
+stale snapshot. The address fields then render read-only, because the address belongs to the
+organization rather than the person — which is exactly why they appear greyed out in the source
+application. The state field swaps from a `<select>` to a read-only text input rather than being
+disabled, since a disabled control drops out of the tab order entirely.
+
+Creating an organization is a `POST` that **does not fail on a duplicate name**: it returns the
+existing record with `created: false`, and the UI simply selects it. A filer who types a name that
+already exists wants to use that record, not read an error.
+
+### 2.3 The wizard
 
 `pages/guest/GuestWizard.jsx` holds everything:
 
@@ -94,7 +118,7 @@ would only produce a confusing failure four steps later.
 Nothing is persisted between steps. A guest who refreshes loses the form — no drafts, matching the
 real tool's guest behaviour and the brief.
 
-### 2.3 Submit
+### 2.4 Submit
 
 `api.submitComplaint(form, verificationToken)` → `POST /api/complaints`, with the token in an
 `x-verification-token` header. In `routes/complaints.js`:
@@ -234,6 +258,8 @@ Ranked by how much they would matter in production.
 | 8 | **SQLite is single-writer** | Concurrent writes serialize; under load a writer can hit `SQLITE_BUSY` | Set `busy_timeout`; migrate to Postgres when write concurrency is real |
 | 9 | **Verification state is in memory** | A restart mid-flow invalidates pending codes and tokens | Move to Redis or a table with a TTL sweep |
 | 10 | **No frontend tests** | The React layer is verified manually and by a scripted pass over the built app | Vitest + Testing Library on the wizard's step-gating and error-routing logic |
+| 11 | **Guests can create organizations, and nobody can merge them** | Near-duplicates ("Riverbend Hospital" vs "Riverbend Regional Hospital") will accumulate, and dedupe is on name alone so the same name in two cities cannot coexist | Staff curation tooling — merge, edit, deactivate — plus a natural key that includes address or NPI/EIN |
+| 12 | **`ensureColumn` is not a migration system** | It adds a missing column on boot, but there is no ordering, no version tracking, and no down path | A real migration tool before a second environment exists |
 
 Two things that look like weaknesses but are decisions:
 
@@ -254,8 +280,11 @@ Roughly in order of what I would do first:
    the endpoint authorization to match.
 2. **Postgres.** The schema ports almost unchanged — `AUTOINCREMENT` becomes `GENERATED AS
    IDENTITY`, `datetime('now')` becomes `now()`, and the tracking counter becomes a sequence or a
-   `SELECT ... FOR UPDATE`. Add a migration tool at the same time; `schema.sql`-on-boot does not
-   survive contact with a second environment.
+   `SELECT ... FOR UPDATE`. Add a real migration tool at the same time: `schema.sql`-on-boot plus
+   the `ensureColumn` helper in `db/index.js` is the smallest thing that keeps a dev database
+   working, and it does not survive contact with a second environment. Organization search would
+   also move from `LIKE` to a trigram index or full-text search, which `LIKE '%term%'` cannot use
+   an index for.
 3. **Pagination, search, and saved filters** on the queue, because that is the screen staff live in.
 4. **An outbox table for notifications**, written in the same transaction as the status change and
    drained by a worker, so a status update and its email cannot get out of step — and so

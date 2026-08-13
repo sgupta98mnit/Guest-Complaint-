@@ -73,6 +73,17 @@ export function GuestWizard() {
     setForm((prev) => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   }
 
+  /**
+   * Patch several fields of a section at once.
+   *
+   * Selecting an organization rewrites the name and five address fields
+   * together. Doing that as six sequential `update` calls would queue six
+   * separate state updates off the same stale snapshot.
+   */
+  function updateMany(section, patch) {
+    setForm((prev) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
+  }
+
   function goNext() {
     const stepErrors = validateStep(step.id, form);
     if (Object.keys(stepErrors).length > 0) {
@@ -122,7 +133,7 @@ export function GuestWizard() {
     return <Navigate to="/" replace />;
   }
 
-  const stepProps = { form, update, errors, reference, verifiedEmail };
+  const stepProps = { form, update, updateMany, errors, reference, verifiedEmail };
 
   return (
     <>

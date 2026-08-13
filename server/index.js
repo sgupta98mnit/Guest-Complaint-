@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.js';
 import { complaintsRouter } from './routes/complaints.js';
 import { referenceRouter } from './routes/reference.js';
 import { verificationRouter } from './routes/verification.js';
+import { organizationsRouter } from './routes/organizations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
@@ -35,6 +36,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/verification', verificationRouter);
   app.use('/api/reference', referenceRouter);
+  app.use('/api/organizations', organizationsRouter);
   app.use('/api/complaints', complaintsRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
