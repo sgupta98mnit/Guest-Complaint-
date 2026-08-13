@@ -1,5 +1,6 @@
 import { db } from './index.js';
 import { persistSubmission, persistAction } from '../lib/complaintStore.js';
+import { createOrganization } from '../lib/organizationStore.js';
 
 // Synthetic demo data, mirroring the rows shown in the design prototype so the
 // queue and its stat tiles look like the handoff. Entirely fabricated - no real
@@ -262,6 +263,7 @@ function seed() {
       DELETE FROM complainants;
       DELETE FROM filed_against_entities;
       DELETE FROM complaints;
+      DELETE FROM organizations;
       DELETE FROM tracking_sequence;
     `);
     console.log('[seed] cleared existing data');
@@ -275,7 +277,25 @@ function seed() {
     return;
   }
 
+  // Register each filed-against entity as a real organization first, so the
+  // wizard's lookup has something to find and the seeded complaints reference
+  // canonical records rather than dangling name strings.
+  const register = (fae) => {
+    const { organization } = createOrganization({
+      name: fae.orgName,
+      entityType: fae.entityType,
+      address: fae.address,
+      city: fae.city,
+      state: fae.state,
+      zip: fae.zip,
+      phone: fae.phone,
+    });
+    fae.orgId = organization.id;
+  };
+
   for (const { action, status, createdAt, ...submission } of SUBMISSIONS) {
+    register(submission.fae);
+
     // Seeded filings are treated as verified at submission time, matching what
     // the live flow records.
     const { complaintId, trackingId } = persistSubmission(submission, {

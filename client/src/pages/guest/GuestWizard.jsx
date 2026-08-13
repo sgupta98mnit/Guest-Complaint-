@@ -67,6 +67,17 @@ export function GuestWizard() {
     setForm((prev) => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   }
 
+  /**
+   * Patch several fields of a section at once.
+   *
+   * Selecting an organization rewrites the name plus six inherited fields
+   * together. Doing that as seven sequential `set` calls would queue seven
+   * updates off the same stale snapshot.
+   */
+  function setMany(section, patch) {
+    setForm((prev) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
+  }
+
   function goTo(index) {
     setErrors({});
     setBanner(null);
@@ -166,7 +177,7 @@ export function GuestWizard() {
     );
   }
 
-  const stepProps = { form, set, errors, reference };
+  const stepProps = { form, set, setMany, errors, reference };
 
   return (
     <>

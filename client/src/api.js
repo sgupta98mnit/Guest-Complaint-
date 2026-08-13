@@ -91,6 +91,11 @@ async function request(path, { method = 'GET', body, auth = false, headers = {} 
 export const api = {
   reference: () => request('/api/reference'),
 
+  searchOrganizations: (query) => request(`/api/organizations?q=${encodeURIComponent(query)}`),
+
+  createOrganization: (organization) =>
+    request('/api/organizations', { method: 'POST', body: organization }),
+
   requestVerificationCode: (email) =>
     request('/api/verification/request', { method: 'POST', body: { email } }),
 

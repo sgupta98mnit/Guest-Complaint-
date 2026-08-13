@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.js';
 import { complaintsRouter } from './routes/complaints.js';
 import { referenceRouter } from './routes/reference.js';
 import { verificationRouter } from './routes/verification.js';
+import { organizationsRouter } from './routes/organizations.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,11 +44,18 @@ export function createApp() {
     app.post('/api/auth/login', rateLimit({ name: 'login', limit: 10, windowMs: 15 * 60 * 1000 }));
     app.use('/api/verification', rateLimit({ name: 'verify', limit: 20, windowMs: 15 * 60 * 1000 }));
     app.post('/api/complaints', rateLimit({ name: 'submit', limit: 10, windowMs: 60 * 60 * 1000 }));
+    // Creating organizations is an unauthenticated write too. Search is not
+    // capped - it is read-only and the wizard fires one per keystroke burst.
+    app.post(
+      '/api/organizations',
+      rateLimit({ name: 'org-create', limit: 15, windowMs: 60 * 60 * 1000 }),
+    );
   }
 
   app.use('/api/auth', authRouter);
   app.use('/api/reference', referenceRouter);
   app.use('/api/verification', verificationRouter);
+  app.use('/api/organizations', organizationsRouter);
   app.use('/api/complaints', complaintsRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));

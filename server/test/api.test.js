@@ -190,6 +190,82 @@ describe('POST /api/complaints', () => {
   });
 });
 
+/* ----------------------------------------------------------- organizations -- */
+
+describe('organizations', () => {
+  const org = {
+    name: 'Test Organization Alpha',
+    entityType: 'Health plan',
+    address: '1 Test Way',
+    city: 'Albany',
+    state: 'NY',
+    zip: '12207',
+    phone: '(518) 555-0100',
+  };
+
+  test('creates an organization and normalizes its phone', async () => {
+    const res = await api('POST', '/api/organizations', { body: org });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.created, true);
+    assert.equal(res.body.organization.phone, '5185550100');
+  });
+
+  test('returns the existing record instead of failing on a duplicate name', async () => {
+    const res = await api('POST', '/api/organizations', {
+      body: { ...org, name: 'test organization alpha' }, // different case
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.created, false);
+    assert.equal(res.body.organization.name, org.name);
+  });
+
+  test('requires complete details, since the record is reused', async () => {
+    const res = await api('POST', '/api/organizations', { body: { name: 'Incomplete Org' } });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors.address);
+    assert.ok(res.body.errors.city);
+    assert.ok(res.body.errors.entityType);
+  });
+
+  test('searches by partial name', async () => {
+    const res = await api('GET', '/api/organizations?q=organization%20alph');
+    assert.ok(res.body.organizations.some((o) => o.name === org.name));
+  });
+
+  test('ignores searches shorter than two characters', async () => {
+    assert.deepEqual((await api('GET', '/api/organizations?q=a')).body.organizations, []);
+  });
+
+  test('treats LIKE wildcards as literal characters', async () => {
+    // Without escaping, "%" would match every organization in the table.
+    assert.deepEqual((await api('GET', '/api/organizations?q=%25%25')).body.organizations, []);
+  });
+
+  test('links a complaint to the organization record', async () => {
+    const { body: made } = await api('POST', '/api/organizations', {
+      body: { ...org, name: 'Linked Health Plan' },
+    });
+
+    const payload = validSubmission({
+      fae: { orgId: made.organization.id, orgName: made.organization.name },
+    });
+    const submitted = await submit(payload);
+    assert.equal(submitted.status, 201);
+
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+    const detail = await api('GET', `/api/complaints/${row.id}`, authed(token));
+    assert.equal(detail.body.fae.orgId, made.organization.id);
+    assert.equal(detail.body.fae.orgName, 'Linked Health Plan');
+  });
+
+  test('rejects a complaint naming an organization that does not exist', async () => {
+    const res = await submitRaw(validSubmission({ fae: { orgId: 999999 } }));
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['fae.orgName']);
+  });
+});
+
 /* ----------------------------------------------------- verification gate -- */
 
 describe('email verification', () => {

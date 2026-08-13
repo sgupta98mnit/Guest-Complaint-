@@ -37,3 +37,4 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('complainants', 'email_verified_at', 'TEXT');
+ensureColumn('filed_against_entities', 'org_id', 'INTEGER REFERENCES organizations(id)');

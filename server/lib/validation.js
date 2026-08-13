@@ -203,6 +203,35 @@ export function validateSubmission(payload = {}, now = new Date()) {
   };
 }
 
+/**
+ * A new organization created inline from the wizard.
+ *
+ * Address is required here even though it is optional on the complaint itself:
+ * an organization record is reused across filings, so it is worth insisting it
+ * be complete at the point of creation rather than accumulating half-filled
+ * records that every later filer inherits.
+ */
+export function validateOrganization(org = {}) {
+  const bag = new ErrorBag('');
+
+  bag
+    .required('name', org.name, 'Organization name')
+    .maxLength('name', org.name, MAX.short, 'Organization name')
+    .required('entityType', org.entityType, 'Entity type')
+    .oneOf('entityType', org.entityType, ENTITY_TYPES, 'entity type')
+    .required('address', org.address, 'Street address')
+    .maxLength('address', org.address, MAX.short, 'Street address')
+    .required('city', org.city, 'City')
+    .maxLength('city', org.city, MAX.short, 'City')
+    .required('state', org.state, 'State')
+    .oneOf('state', org.state, STATES, 'state')
+    .required('zip', org.zip, 'ZIP')
+    .zip('zip', org.zip, 'ZIP code')
+    .phone('phone', org.phone, 'phone number');
+
+  return bag.errors;
+}
+
 export function validateAction(payload = {}) {
   const bag = new ErrorBag('');
 

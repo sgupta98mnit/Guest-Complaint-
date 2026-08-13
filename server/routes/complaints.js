@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireReviewer } from './auth.js';
 import { consumeToken } from '../lib/verification.js';
+import { getOrganization } from '../lib/organizationStore.js';
 import { validateSubmission, validateAction } from '../lib/validation.js';
 import {
   persistSubmission,
@@ -37,6 +38,15 @@ complaintsRouter.post('/', (req, res) => {
   // payload that was going to fail anyway would force the filer to re-verify
   // their email over a typo.
   const errors = validateSubmission(payload);
+
+  // The organization reference is checked here rather than in validation.js,
+  // which is deliberately pure and knows nothing about the database. The
+  // foreign key would catch a bad id anyway, but as a 500 rather than a 400.
+  const orgId = payload.fae?.orgId;
+  if (orgId != null && !getOrganization(orgId)) {
+    errors['fae.orgName'] = 'Select an organization from the list, or create a new one.';
+  }
+
   if (Object.keys(errors).length > 0) {
     return res.status(400).json({ errors });
   }

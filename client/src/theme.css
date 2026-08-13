@@ -800,6 +800,72 @@ legend {
   margin-top: 5px;
 }
 
+/* ---------------------------------------------------- organization picker */
+
+.org-combobox {
+  position: relative;
+}
+
+.org-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.org-results__item {
+  padding: 10px 12px;
+  font-size: 15.5px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.org-results__item:last-child {
+  border-bottom: 0;
+}
+
+/* The highlight follows the arrow keys, so it must be a class rather than
+   :hover - DOM focus stays on the input throughout. */
+.org-results__item.is-highlighted {
+  background: var(--primary-tint);
+}
+
+.org-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 12px 14px;
+  font-size: 15.5px;
+}
+
+.org-add {
+  display: inline-block;
+  margin-top: 8px;
+}
+
+/* Fields derived from the selected organization. Greyed to signal they are
+   inherited rather than typed. */
+.field__control[readonly] {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  border-color: var(--border);
+}
+
 /* ------------------------------------------------------------------- modal */
 /* Not in the handoff - it has no dialog - so this follows the same tokens:
    hairline borders, 6px radius, no shadow except the overlay lift. */

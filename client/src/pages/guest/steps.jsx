@@ -5,6 +5,11 @@ import {
   TextArea,
   TextField,
 } from '../../components/Field.jsx';
+import {
+  OrganizationPicker,
+  orgSelectPatch,
+  ORG_CLEAR_PATCH,
+} from '../../components/OrganizationPicker.jsx';
 import { DESCRIPTION_MAX, todayISO } from '../../validation.js';
 
 // The wizard's step bodies. These are presentational: they render fields
@@ -239,34 +244,53 @@ export function YourInformation({ form, set, errors, reference }) {
   );
 }
 
-export function FiledAgainstEntity({ form, set, errors, reference }) {
+export function FiledAgainstEntity({ form, set, setMany, errors, reference }) {
   const { fae } = form;
+  // Once an organization is chosen its details are inherited, not typed.
+  const fromOrg = Boolean(fae.orgId);
 
   return (
     <>
       <RequiredNote />
       <div className="field-stack" style={{ gap: 24 }}>
-        <TextField
+        <OrganizationPicker
           id="fae.orgName"
           label="Organization name"
           hint="The health plan, clearinghouse, or provider the complaint is about."
           required
-          value={fae.orgName}
-          onChange={(value) => set('fae', 'orgName', value)}
+          value={{ orgId: fae.orgId, orgName: fae.orgName, city: fae.city, state: fae.state }}
+          onSelect={(organization) => setMany('fae', orgSelectPatch(organization))}
+          onClear={() => setMany('fae', ORG_CLEAR_PATCH)}
           error={errors['fae.orgName']}
-          autoComplete="organization"
+          entityTypes={reference.entityTypes}
+          states={reference.states}
         />
 
         <div className="two-up">
-          <SelectField
-            id="fae.entityType"
-            label="Entity type"
-            required
-            value={fae.entityType}
-            onChange={(value) => set('fae', 'entityType', value)}
-            options={reference.entityTypes}
-            error={errors['fae.entityType']}
-          />
+          {fromOrg ? (
+            // A select has no read-only mode, and disabling it would drop it out
+            // of the tab order. A read-only text field keeps the inherited value
+            // reachable and announced.
+            <TextField
+              id="fae.entityType"
+              label="Entity type"
+              required
+              readOnly
+              value={fae.entityType}
+              onChange={(value) => set('fae', 'entityType', value)}
+              error={errors['fae.entityType']}
+            />
+          ) : (
+            <SelectField
+              id="fae.entityType"
+              label="Entity type"
+              required
+              value={fae.entityType}
+              onChange={(value) => set('fae', 'entityType', value)}
+              options={reference.entityTypes}
+              error={errors['fae.entityType']}
+            />
+          )}
           <TextField
             id="fae.phone"
             label="Contact phone"
@@ -274,8 +298,16 @@ export function FiledAgainstEntity({ form, set, errors, reference }) {
             value={fae.phone}
             onChange={(value) => set('fae', 'phone', value)}
             error={errors['fae.phone']}
+            readOnly={fromOrg}
           />
         </div>
+
+        {fromOrg && (
+          <p style={{ fontSize: 14, color: 'var(--muted)', margin: '-8px 0 0' }}>
+            These details come from the selected organization. Choose <strong>Change</strong> above
+            to use a different one.
+          </p>
+        )}
 
         <TextField
           id="fae.address"
@@ -284,6 +316,7 @@ export function FiledAgainstEntity({ form, set, errors, reference }) {
           onChange={(value) => set('fae', 'address', value)}
           error={errors['fae.address']}
           autoComplete="street-address"
+          readOnly={fromOrg}
         />
 
         <div className="city-state-zip">
@@ -294,16 +327,28 @@ export function FiledAgainstEntity({ form, set, errors, reference }) {
             onChange={(value) => set('fae', 'city', value)}
             error={errors['fae.city']}
             autoComplete="address-level2"
+            readOnly={fromOrg}
           />
-          <SelectField
-            id="fae.state"
-            label="State"
-            value={fae.state}
-            onChange={(value) => set('fae', 'state', value)}
-            options={reference.states}
-            error={errors['fae.state']}
-            placeholder="—"
-          />
+          {fromOrg ? (
+            <TextField
+              id="fae.state"
+              label="State"
+              readOnly
+              value={fae.state}
+              onChange={(value) => set('fae', 'state', value)}
+              error={errors['fae.state']}
+            />
+          ) : (
+            <SelectField
+              id="fae.state"
+              label="State"
+              value={fae.state}
+              onChange={(value) => set('fae', 'state', value)}
+              options={reference.states}
+              error={errors['fae.state']}
+              placeholder="—"
+            />
+          )}
           <TextField
             id="fae.zip"
             label="ZIP"
@@ -311,6 +356,7 @@ export function FiledAgainstEntity({ form, set, errors, reference }) {
             onChange={(value) => set('fae', 'zip', value)}
             error={errors['fae.zip']}
             autoComplete="postal-code"
+            readOnly={fromOrg}
           />
         </div>
       </div>

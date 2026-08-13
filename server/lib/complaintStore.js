@@ -27,8 +27,8 @@ const insertComplainant = db.prepare(`
 
 const insertFae = db.prepare(`
   INSERT INTO filed_against_entities (
-    complaint_id, org_name, entity_type, address, city, state, zip, phone
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    complaint_id, org_id, org_name, entity_type, address, city, state, zip, phone
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertAction = db.prepare(`
@@ -99,6 +99,7 @@ const toComplainant = (row) =>
 
 const toFae = (row) =>
   row && {
+    orgId: row.org_id,
     orgName: row.org_name,
     entityType: row.entity_type,
     address: row.address,
@@ -170,6 +171,7 @@ export const persistSubmission = db.transaction(
 
     insertFae.run(
       complaintId,
+      fae.orgId ?? null,
       blankToNull(fae.orgName),
       blankToNull(fae.entityType),
       blankToNull(fae.address),

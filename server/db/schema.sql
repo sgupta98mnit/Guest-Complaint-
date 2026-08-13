@@ -61,10 +61,40 @@ CREATE TABLE IF NOT EXISTS complainants (
   anonymous             INTEGER NOT NULL DEFAULT 0   -- 0/1
 );
 
+-- Organizations are shared records, looked up by name and reused across
+-- complaints. Without this the same entity is filed against under a dozen
+-- spellings ("Cardinal Health Plan of New York", "cardinal health plan",
+-- "Cardinal") and a reviewer cannot see every complaint against one org - which
+-- is much of the point of an intake queue.
+--
+-- Dedupe is on name alone, case-insensitively. That is a simplification: real
+-- organizations share names across cities, so the natural key would include the
+-- address or - more fittingly for this domain - the NPI or EIN, which are
+-- themselves among the identifiers ASETT exists to enforce.
+CREATE TABLE IF NOT EXISTS organizations (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  name                  TEXT NOT NULL,
+  entity_type           TEXT,
+  address               TEXT,
+  city                  TEXT,
+  state                 TEXT,
+  zip                   TEXT,
+  phone                 TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name
+  ON organizations(name COLLATE NOCASE);
+
 -- The organization the complaint is about.
+--
+-- org_id links to the canonical record; org_name is the name as filed. Keeping
+-- the snapshot means a complaint still reads correctly if the organization is
+-- later renamed.
 CREATE TABLE IF NOT EXISTS filed_against_entities (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id          INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+  org_id                INTEGER REFERENCES organizations(id),
   org_name              TEXT NOT NULL,
   entity_type           TEXT NOT NULL,
   address               TEXT,
