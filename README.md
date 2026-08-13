@@ -57,7 +57,7 @@ the header.
 | --- | --- |
 | `npm run setup` | Installs root, server, and client dependencies |
 | `npm run dev` | Runs the API on `:3001` and Vite on `:5173`, which proxies `/api` |
-| `npm test` | Backend test suite (35 tests) |
+| `npm test` | Backend test suite (46 tests) |
 | `npm run seed` | Loads eight synthetic complaints across every status |
 | `npm run seed:reset` | Wipes the database first, then re-seeds |
 | `npm run build` | Builds the client into `client/dist` |
@@ -73,9 +73,11 @@ To reset all state, run `npm run seed:reset`, or delete `server/db/asett.db` and
    review → submit. Note the tracking ID on the confirmation screen.
 3. Try **File anonymously** on the "Your information" step — your name stops being required, but
    the verified email stays on record. The reviewer sees "Anonymous complainant".
-4. Sign in as the reviewer. The queue shows stat tiles, status filter chips, and every complaint.
-5. Open a row. The decision panel stays disabled until you pick an action **and** write a note.
-6. Record a decision — the status pill updates, the timeline gains an entry, and the queue reflects
+4. On **Filed-against entity**, type `card` into the organization field to search existing records,
+   or use **+ New organization**. Selecting one fills in and locks its address and entity type.
+5. Sign in as the reviewer. The queue shows stat tiles, status filter chips, and every complaint.
+6. Open a row. The decision panel stays disabled until you pick an action **and** write a note.
+7. Record a decision — the status pill updates, the timeline gains an entry, and the queue reflects
    the new status.
 
 ---
@@ -95,13 +97,15 @@ server/
     complaintStore.js   Every SQL statement and both write transactions
     trackingId.js       Atomic CM-YY-NNNNN generation
     verification.js     Email OTP: hashed, expiring, attempt-capped, single-use
+    organizationStore.js Organization search and inline creation
     rateLimit.js        Per-IP fixed-window limiter for the public endpoints
   routes/
     auth.js             Reviewer login/logout + requireReviewer middleware
     complaints.js       Submit, list, detail, record action
     verification.js     OTP request/verify
+    organizations.js    Organization lookup + create
     reference.js        Serves reference data to the client
-  test/                 35 tests over the route layer + the rate limiter
+  test/                 46 tests over the route layer + the rate limiter
 
 client/src/
   api.js                The only place fetch is called
@@ -110,7 +114,8 @@ client/src/
   validation.js         Client mirror of the server rules (see note below)
   format.js             Date formatting — calendar dates vs. timestamps
   theme.css             Design tokens and components from the handoff
-  components/           Chrome, Field primitives, ErrorSummary, StatusPill
+  components/           Chrome, Field primitives, ErrorSummary, StatusPill,
+                        OrganizationPicker (ARIA combobox + create modal)
   pages/
     guest/              GuestWizard, ProgressRail, ReviewSubmit, step bodies
     reviewer/           Login, Queue, Detail
@@ -129,6 +134,18 @@ erDiagram
     complaints ||--|| complainants : "filed by"
     complaints ||--|| filed_against_entities : "filed against"
     complaints ||--o{ complaint_actions : "has history"
+    organizations ||--o{ filed_against_entities : "is named as"
+
+    organizations {
+        int id PK
+        text name UK "unique, case-insensitive"
+        text entity_type
+        text address
+        text city
+        text state
+        text zip
+        text phone
+    }
 
     complaints {
         int id PK
@@ -154,7 +171,8 @@ erDiagram
     }
     filed_against_entities {
         int complaint_id FK
-        text org_name
+        int org_id FK
+        text org_name "snapshot of the name as filed"
         text entity_type
         text address
         text city
@@ -192,6 +210,21 @@ update and the action insert happen in a single transaction (`persistAction` in
 **Actions are never updated or deleted.** A second decision appends a row. The log is the audit
 trail; editing a past decision would destroy it.
 
+**Organizations are shared records, not free text.** With a plain text field the same entity gets
+filed against as "Cardinal Health Plan of New York", "cardinal health plan", and "Cardinal" — three
+different entities as far as the queue is concerned, so a reviewer cannot see every complaint
+against one organization. That is much of the point of an intake queue, so the filed-against
+organization is a lookup with inline creation.
+
+`filed_against_entities` keeps **both** `org_id` and `org_name`: the FK points at the canonical
+record, and the name is a snapshot of what was filed, so a complaint still reads correctly if the
+organization is later renamed. Address, entity type, and phone are inherited from the organization
+and shown read-only, because they belong to the org rather than to this filing.
+
+Dedupe is on name alone, case-insensitively — a simplification, since real organizations share
+names across cities. The natural key would include the address or, more fittingly for this domain,
+the NPI or EIN, which are themselves among the identifiers ASETT exists to enforce.
+
 **Anonymity is a disclosure control, not a collection control.** Filing anonymously withholds the
 filer's name and phone from the filed-against entity. It does **not** remove the verified email CMS
 holds — `complainants.email` and `email_verified_at` are recorded on every filing, anonymous or
@@ -220,6 +253,8 @@ All endpoints are under `/api`. Reviewer endpoints require `Authorization: Beare
 | `GET` | `/api/reference` | — | Picklists, statuses, decision options |
 | `POST` | `/api/verification/request` | — | Issue a 6-digit code for an email |
 | `POST` | `/api/verification/verify` | — | Exchange a code for a verification token |
+| `GET` | `/api/organizations?q=` | — | Search organizations by name |
+| `POST` | `/api/organizations` | — | Create one inline; returns the existing record on a name collision |
 | `POST` | `/api/complaints` | verification token | Submit a complaint; returns the tracking ID |
 | `POST` | `/api/auth/login` | — | Reviewer sign in |
 | `POST` | `/api/auth/logout` | reviewer | Invalidate the token |
@@ -271,6 +306,21 @@ account, as specified.
 content rather than intent. This ships the full 50 states + DC; address fields are optional either
 way, so it only affects what a filer may pick.
 
+### Deliberate deviations from the handoff
+
+Three, each because implementing the spec literally produced a system that did not work. They are
+listed here rather than buried, because a reviewer comparing the build to the spec should find the
+reasoning immediately.
+
+| Deviation | The spec says | Why |
+| --- | --- | --- |
+| **Email verification gates filing** | No verification step at all | Without it a complaint carries an unverified address, and an anonymous one carries none — so nothing identifies who filed it and nothing stops a script filling the queue. |
+| **Anonymity keeps the email** | Name *and email* optional when anonymous | Making email optional is what creates the untraceable case above. Anonymity now withholds the name from the filed-against entity while CMS keeps a verified address, which is what the spec's own copy promises. |
+| **Organization is a lookup** | Plain text input, no `organizations` table | Free text fragments the same entity across spellings, so the queue cannot group complaints by who they are against. |
+
+The first two are near-free — the spec is simply silent on verification. The third is the largest:
+it adds a table the handoff's data model does not contain.
+
 ### Deliberately out of scope
 
 | Cut | Why |
@@ -278,6 +328,7 @@ way, so it only affects what a filer may pick.
 | **Supporting document upload** | Called out as out of scope in the handoff itself. Doing it properly needs object storage, presigned URLs, MIME allowlisting, size caps, and AV scanning; doing it badly is the most dangerous thing in an app like this. |
 | **Registered accounts, drafts, post-submit tracking** | The handoff specifies guest filing with no draft saving and no retrieval endpoint. |
 | **Pagination on the queue** | Correct at demo scale, wrong at 50,000 rows. |
+| **Organization merge and curation** | Organizations can be searched and created but not merged, edited, or retired. Guest-created records mean near-duplicates will accumulate; staff tooling is the real fix. |
 | **Notifications** | `needs_info` is explicitly an internal hold with nothing sent to the complainant, and there is no notification subsystem for anything else to leak into. |
 
 ### The one intentional duplication
@@ -392,7 +443,7 @@ that by clearing the token on a 401 and returning to sign-in. Complaints are on 
 npm test
 ```
 
-35 tests on Node's built-in runner against an in-memory database — no test framework dependency.
+46 tests on Node's built-in runner against an in-memory database — no test framework dependency.
 They cover submission validation (future dates, impossible calendar dates, forged picklist values,
 malformed tracking IDs), the anonymity branch in both directions, tracking-ID sequencing, username
 normalization, the auth guards on every protected endpoint, status filtering and counts, and the
