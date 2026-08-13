@@ -49,7 +49,7 @@ proxies `/api` to the API so the browser only ever talks to one origin.
 | --- | --- |
 | `npm run setup` | Installs root, server, and client dependencies |
 | `npm run dev` | Runs API + Vite dev server together |
-| `npm test` | Runs the backend test suite (28 tests) |
+| `npm test` | Runs the backend test suite (29 tests) |
 | `npm run seed` | Loads four synthetic complaints across all four statuses, plus their organizations |
 | `npm run seed:reset` | Wipes the database first, then re-seeds |
 | `npm run build` | Builds the client into `client/dist` |
@@ -96,7 +96,7 @@ server/
     organizations.js    Organization lookup + inline creation
     reference.js        Serves the picklists to the client
     verification.js     OTP request/verify
-  test/api.test.js      28 tests over the route layer
+  test/api.test.js      29 tests over the route layer
 
 client/src/
   api.js                The only place fetch is called
@@ -388,23 +388,16 @@ restarts on boot. Two things to know:
 npm test
 ```
 
-28 tests using Node's built-in runner against an in-memory database — no test framework
+29 tests using Node's built-in runner against an in-memory database — no test framework
 dependency. They cover OTP issuance, expiry, replay, and lockout; submission validation including
-future dates and forged picklist values; verification-token binding; tracking-ID sequencing;
+future dates and forged picklist values; verification-token binding, and that a rejected
+submission writes nothing and can be retried without duplicating; tracking-ID sequencing;
 organization creation, case-insensitive dedupe, and `LIKE`-wildcard escaping; the auth guards on
 every protected endpoint; and the review workflow, including that a second decision appends to
 history rather than replacing it.
 
 Not covered: frontend component tests and browser-level end-to-end tests. The React layer was
 verified manually and via a scripted pass over the running production build.
-
----
-
-## Time spent
-
-Roughly **9–11 hours**, approximately: 1h exploring the live sandbox and mapping the real flow,
-1h on schema and data-model decisions, 3h backend (validation, verification, routes, tests), 4h
-frontend (wizard, reviewer screens, accessibility, styling), and 1–2h on documentation.
 
 ---
 
