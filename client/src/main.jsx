@@ -15,11 +15,14 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 
 import { App } from './App.jsx';
+import { BASE_PATH } from './basePath.js';
 import './theme.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* basename keeps every <Link> and navigate() inside the mount point, so a
+        subpath deployment does not send users to the site root. */}
+    <BrowserRouter basename={BASE_PATH}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,

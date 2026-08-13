@@ -1,6 +1,9 @@
+import { withBase } from './basePath.js';
+
 // Every network call in the app goes through this module, so error shapes, auth
 // headers, and JSON handling are defined once rather than re-implemented
-// slightly differently in each component.
+// slightly differently in each component. Centralising it also means the
+// deployment base path is applied in exactly one place.
 
 const TOKEN_KEY = 'asett.reviewer.token';
 const NAME_KEY = 'asett.reviewer.name';
@@ -50,7 +53,9 @@ async function request(path, { method = 'GET', body, auth = false, headers = {} 
 
   let res;
   try {
-    res = await fetch(path, {
+    // Callers pass root-relative paths like "/api/complaints"; the base is
+    // added here so no call site has to remember it.
+    res = await fetch(withBase(path), {
       method,
       headers: finalHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),

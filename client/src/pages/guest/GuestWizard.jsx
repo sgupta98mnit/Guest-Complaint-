@@ -161,9 +161,10 @@ export function GuestWizard() {
 
             {!isConfirmation && <ErrorSummary errors={errors} labels={FIELD_LABELS} />}
 
-            {step.id === 'start' && (
-              <GettingStarted onStart={goNext} onExit={() => window.location.assign('/')} />
-            )}
+            {/* "Exit without filing" clears the form rather than navigating away:
+                the wizard is the whole app, and a hard location change would
+                leave the mount point entirely on a subpath deployment. */}
+            {step.id === 'start' && <GettingStarted onStart={goNext} onExit={restart} />}
             {step.id === 'type' && <ComplaintType {...stepProps} />}
             {step.id === 'details' && <ComplaintDetails {...stepProps} />}
             {step.id === 'complainant' && <YourInformation {...stepProps} />}
