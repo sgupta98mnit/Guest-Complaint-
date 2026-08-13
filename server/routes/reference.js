@@ -9,6 +9,7 @@ import {
   STATUSES,
   STATUS_FILTERS,
 } from '../lib/referenceData.js';
+import { DEMO_MODE } from '../lib/verification.js';
 
 export const referenceRouter = Router();
 
@@ -25,5 +26,8 @@ referenceRouter.get('/', (_req, res) => {
     decisions: DECISIONS,
     statuses: STATUSES,
     statusFilters: STATUS_FILTERS,
+    // Lets the UI tell the truth about verification: with no mail server, the
+    // code is shown on screen rather than pretending an email was sent.
+    demoMode: DEMO_MODE,
   });
 });

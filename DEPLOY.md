@@ -37,6 +37,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       ASETT_DB_PATH: /data/asett.db
+      ASETT_DEMO_MODE: "true"          # see below — required for the demo to be usable
     volumes:
       - asett-data:/data
     restart: unless-stopped
@@ -49,6 +50,18 @@ volumes:
 
 The database lives at `/data`, **outside** the app tree. Mounting a volume over
 `server/db/` would hide `schema.sql` and `seed.js`, which live there.
+
+### `ASETT_DEMO_MODE`
+
+Filing is gated on email verification, and there is no mail server. With
+`ASETT_DEMO_MODE=true` the API returns the six-digit code and the UI displays it, so a visitor can
+complete a filing.
+
+It is a **separate flag from `NODE_ENV` on purpose.** The hosted demo runs in production mode — CORS
+off, built client served — but still has nowhere to send mail. Deriving this from `NODE_ENV` (the
+first version) made the deployed app impossible to use: the code was suppressed *and* no email
+arrived, so verification could never be completed. Set it to `false` the moment real delivery is
+configured; the code then stops being returned or logged.
 
 The container seeds on start; the seed script is a no-op when rows already exist, so restarts and
 redeploys keep whatever is in the volume.

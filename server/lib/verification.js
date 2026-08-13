@@ -34,9 +34,25 @@ function constantTimeEquals(a, b) {
  * swap the console write for SES/SendGrid and the rest of the flow is unchanged.
  * The code is never logged in production mode.
  */
+/**
+ * Is this instance a demo without a mail server?
+ *
+ * Deliberately NOT tied to NODE_ENV. Those are different questions: the hosted
+ * demo runs with NODE_ENV=production (so CORS is off and the built client is
+ * served) but still has nowhere to send mail. Gating the code on NODE_ENV made
+ * the deployed app impossible to use - the code was suppressed and no email
+ * ever arrived, so no one could get past verification.
+ *
+ * Set ASETT_DEMO_MODE=false the moment real delivery is wired up.
+ */
+export const DEMO_MODE = process.env.ASETT_DEMO_MODE
+  ? process.env.ASETT_DEMO_MODE === 'true'
+  : process.env.NODE_ENV !== 'production';
+
 function deliverCode(email, code) {
-  if (process.env.NODE_ENV === 'production') {
-    console.log('[verification] code issued'); // no email, no code - see README on PII in logs
+  if (!DEMO_MODE) {
+    // Real delivery would happen here. Nothing identifying is logged.
+    console.log('[verification] code issued');
     return;
   }
   console.log(`[verification] code for ${email}: ${code}`);
@@ -73,12 +89,13 @@ export function requestCode(rawEmail, now = Date.now()) {
 
   deliverCode(email, code);
 
-  // The code is returned only outside production so the UI can show it in a
-  // dev banner. In production the caller gets nothing back.
+  // In demo mode the code comes back so the UI can display it, because there is
+  // no inbox for it to arrive in. With real delivery configured the caller gets
+  // nothing back and must read the email.
   return {
     ok: true,
     expiresInSeconds: CODE_TTL_MS / 1000,
-    devCode: process.env.NODE_ENV === 'production' ? undefined : code,
+    devCode: DEMO_MODE ? code : undefined,
   };
 }
 

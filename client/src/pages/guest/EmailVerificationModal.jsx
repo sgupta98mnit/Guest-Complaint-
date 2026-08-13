@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TextField } from '../../components/Field.jsx';
+import { useReference } from '../../reference.jsx';
 import { api } from '../../api.js';
 
 const FOCUSABLE =
@@ -17,6 +18,8 @@ const FOCUSABLE =
  * in constant time. See server/lib/verification.js.
  */
 export function EmailVerificationModal({ onClose, onVerified }) {
+  const { reference } = useReference();
+  const demoMode = reference?.demoMode !== false; // assume demo until told otherwise
   const [phase, setPhase] = useState('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -125,8 +128,15 @@ export function EmailVerificationModal({ onClose, onVerified }) {
               <>
                 <p style={{ marginTop: 0 }}>
                   Complaints are filed against real organizations, so CMS records a verified email
-                  for every filing — including anonymous ones. Enter yours and we’ll send a code.
+                  for every filing — including anonymous ones.
                 </p>
+
+                {demoMode && (
+                  <div className="callout callout--warning" style={{ marginBottom: 18 }}>
+                    <strong>Demo:</strong> no email is sent. Use any address — the code appears on
+                    the next screen.
+                  </div>
+                )}
                 <TextField
                   id="verification-email"
                   label="Email address"
@@ -144,16 +154,27 @@ export function EmailVerificationModal({ onClose, onVerified }) {
             ) : (
               <>
                 <p style={{ marginTop: 0 }}>
-                  Enter the 6-digit code sent to <strong>{email}</strong>. It expires in 10 minutes.
+                  {devCode ? (
+                    <>
+                      Verifying <strong>{email}</strong>. The code expires in 10 minutes.
+                    </>
+                  ) : (
+                    <>
+                      Enter the 6-digit code sent to <strong>{email}</strong>. It expires in 10
+                      minutes.
+                    </>
+                  )}
                 </p>
 
-                {/* No mail server in this prototype, so the API returns the code
-                    outside production and it is shown here. This block does not
-                    render in a production build. */}
+                {/* There is no mail server, so the API hands the code back and it
+                    is shown here. Wire up real delivery and set
+                    ASETT_DEMO_MODE=false and this disappears. */}
                 {devCode && (
                   <div className="callout callout--warning" style={{ marginBottom: 18 }}>
-                    <strong>Demo mode:</strong> no email is actually sent. Your code is{' '}
-                    <span className="mono">{devCode}</span>.
+                    <strong>Demo — no email sent.</strong> Your code is{' '}
+                    <span className="mono" style={{ fontSize: 20, fontWeight: 500 }}>
+                      {devCode}
+                    </span>
                   </div>
                 )}
 

@@ -27,7 +27,12 @@ ENV NODE_ENV=production \
     PORT=3001 \
     # The database lives outside the app tree so a volume can be mounted here
     # without hiding schema.sql and seed.js, which sit in server/db/.
-    ASETT_DB_PATH=/data/asett.db
+    ASETT_DB_PATH=/data/asett.db \
+    # There is no mail server, so the verification code is displayed in the UI
+    # instead of emailed. Without this the hosted demo is unusable: the code is
+    # suppressed and no message ever arrives. Set to false once real delivery
+    # is wired up.
+    ASETT_DEMO_MODE=true
 
 WORKDIR /app
 
