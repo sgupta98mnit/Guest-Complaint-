@@ -13,8 +13,18 @@ Two flows:
 
 React + Vite on the front, Express + SQLite behind.
 
-> **All data in this repository is synthetic.** No real complaints, people, organizations, or
-> health information. See [Security posture](#security-posture) for what that means.
+## Live demo
+
+**→ [sumit-gupta.cloud/projects/asett/](https://sumit-gupta.cloud/projects/asett/)**
+
+Reviewer sign-in is in the header: **`reviewer`** / **`reviewer123`**.
+
+File a complaint through the wizard, note the tracking ID, then sign in and act on it from the
+queue. The demo database is shared and persistent, so anything you file stays there — see
+[Deployment](#deployment).
+
+> **All data is synthetic.** No real complaints, people, organizations, or health information.
+> See [Security posture](#security-posture) for what that means.
 
 ---
 
@@ -317,6 +327,18 @@ Not done: a formal audit with a screen reader or automated tooling (axe, Lightho
 ---
 
 ## Deployment
+
+Live at **[sumit-gupta.cloud/projects/asett/](https://sumit-gupta.cloud/projects/asett/)**, running
+as a Docker container behind Caddy. Full instructions — the compose service, the Caddy block, and
+operations — are in **[DEPLOY.md](DEPLOY.md)**.
+
+Two things worth knowing about that deployment:
+
+- **It is served from a subpath**, so the app has to know where it is mounted. `VITE_BASE_PATH` is
+  baked in at build time and drives the asset URLs, the router's `basename`, and the API request
+  prefix together (`client/src/basePath.js`). Locally it is `/` and nothing changes.
+- **The database is on a named volume**, so complaints filed through the live demo persist across
+  redeploys. `npm run seed:reset` inside the container restores the seeded eight.
 
 Production runs as a **single Node process**. If `client/dist` exists, Express serves it and falls
 back to `index.html` for client-side routes, so there is no separate static host.
