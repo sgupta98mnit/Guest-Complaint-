@@ -1,24 +1,24 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * The error-summary pattern: when a submit fails, move focus to a single
- * summary at the top of the form that lists every problem and links to the
- * field that caused it.
+ * The error-summary pattern: when a step fails validation, move focus to a
+ * single alert listing every problem, each entry linking to the field that
+ * caused it.
  *
- * This matters more than per-field messages alone. A keyboard or screen-reader
- * user who presses "Next" and gets silently rejected has no way to discover
- * what went wrong - inline errors further down the page are never announced.
- * Taking focus here is what makes the failure perceivable.
+ * This matters more than inline messages alone. A keyboard or screen-reader
+ * user who presses "Next" and is silently rejected has no way to discover what
+ * went wrong — errors further down the page are never announced. Taking focus
+ * here is what makes the failure perceivable.
  */
-export function ErrorSummary({ errors, fieldLabels = {}, title = 'Fix the following to continue' }) {
+export function ErrorSummary({ errors, labels = {}, title = 'Fix the following to continue' }) {
   const ref = useRef(null);
   const entries = Object.entries(errors || {});
   const signature = entries.map(([key]) => key).join('|');
 
   useEffect(() => {
     if (entries.length > 0) ref.current?.focus();
-    // Re-focus whenever the *set* of failing fields changes, not on every
-    // keystroke that happens to update an unrelated error object.
+    // Re-focus when the *set* of failing fields changes, not on every keystroke
+    // that happens to rebuild the errors object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
@@ -26,19 +26,20 @@ export function ErrorSummary({ errors, fieldLabels = {}, title = 'Fix the follow
 
   return (
     <div
-      className="alert alert--error"
+      className="callout callout--error"
       role="alert"
       tabIndex={-1}
       ref={ref}
-      aria-labelledby="error-summary-title"
+      style={{ marginBottom: 24 }}
     >
-      <h2 id="error-summary-title">{title}</h2>
-      <ul className="alert__list">
+      <div className="callout__title">{title}</div>
+      <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
         {entries.map(([key, message]) => (
-          <li key={key}>
+          <li key={key} style={{ marginBottom: 4 }}>
             <button
               type="button"
               className="btn--link"
+              style={{ color: 'var(--error)' }}
               onClick={() => {
                 const el = document.getElementById(key);
                 if (el) {
@@ -47,7 +48,7 @@ export function ErrorSummary({ errors, fieldLabels = {}, title = 'Fix the follow
                 }
               }}
             >
-              {fieldLabels[key] ? `${fieldLabels[key]}: ${message}` : message}
+              {labels[key] ? `${labels[key]}: ${message}` : message}
             </button>
           </li>
         ))}

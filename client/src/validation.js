@@ -1,14 +1,11 @@
-// Client-side mirror of the server's rules in server/lib/validation.js.
+// Client-side mirror of server/lib/validation.js.
 //
-// This is duplication, and it is deliberate: the server copy is the one that
-// protects the database and is never removed, while this copy exists so a user
-// finds out about a bad ZIP code before a round trip. If the two ever disagree,
-// the server wins - a submission that gets past this file still gets rejected,
-// and the error comes back keyed the same way so it lands on the right field.
-//
-// In a larger codebase these would be one shared schema (Zod or JSON Schema)
-// consumed by both sides. At this size, a second small pure module is cheaper
-// than the build plumbing that sharing would require.
+// The duplication is deliberate: the server copy protects the database and is
+// never removed, while this copy exists so a filer finds out about a bad ZIP
+// before a round trip. Both return identically-keyed maps, so if they ever
+// disagree the server simply wins and its message still lands on the right
+// field. At a larger size these would be one shared schema (Zod) consumed by
+// both sides.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZIP_RE = /^\d{5}(-\d{4})?$/;
@@ -19,60 +16,63 @@ const digits = (value) => String(value ?? '').replace(/\D/g, '');
 
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
+export const DESCRIPTION_MAX = 4000;
+
 /* --------------------------------------------------------------- steps -- */
 
 export const STEPS = [
-  { id: 'getting-started', label: 'Getting Started' },
-  { id: 'complaint-type', label: 'Complaint Type' },
-  { id: 'complaint-details', label: 'Complaint Details' },
-  { id: 'complainant-details', label: 'Complainant Details' },
-  { id: 'fae-details', label: 'FAE Details' },
-  { id: 'review-submit', label: 'Review & Submit' },
-  { id: 'confirmation', label: 'Confirmation' },
+  { id: 'start', label: 'Getting started', hint: "What you'll need" },
+  { id: 'type', label: 'Complaint type', hint: 'Standard at issue' },
+  { id: 'details', label: 'Complaint details', hint: 'Description & dates' },
+  { id: 'complainant', label: 'Your information', hint: 'Contact or anonymous' },
+  { id: 'fae', label: 'Filed-against entity', hint: 'Who the complaint is about' },
+  { id: 'review', label: 'Review & submit', hint: 'Check before sending' },
+  { id: 'confirm', label: 'Confirmation', hint: 'Tracking ID' },
 ];
 
-/** Which error keys belong to which step - used to route server errors back. */
+export const STEP_BLURBS = {
+  start: 'Anyone can file a HIPAA administrative simplification complaint. No account needed.',
+  type: 'Tell us which standard the complaint concerns.',
+  details: 'Describe what happened and when. Be as specific as you can.',
+  complainant: 'Your contact details, or file anonymously.',
+  fae: 'Identify the organization the complaint is about.',
+  review: "Check every answer. You can't change a guest complaint after you submit it.",
+  confirm: 'Your complaint is on file with CMS.',
+};
+
+/** Which error keys belong to which step, used to route server errors back. */
 const STEP_FIELDS = {
-  'complaint-type': ['complaint.complaintType'],
-  'complaint-details': [
+  type: ['complaint.complaintType'],
+  details: [
     'complaint.description',
     'complaint.actionsTaken',
     'complaint.incidentDate',
-    'complaint.prevTrackingId',
     'complaint.transactionType',
+    'complaint.previousTrackingId',
   ],
-  'complainant-details': [
-    'complainant.orgName',
-    'complainant.orgType',
+  complainant: [
     'complainant.firstName',
     'complainant.lastName',
-    'complainant.addressLine1',
-    'complainant.addressLine2',
-    'complainant.city',
-    'complainant.state',
-    'complainant.zip',
     'complainant.email',
     'complainant.phone',
+    'complainant.role',
   ],
-  'fae-details': [
+  fae: [
     'fae.orgName',
-    'fae.orgType',
-    'fae.contactFirstName',
-    'fae.contactLastName',
-    'fae.addressLine1',
-    'fae.addressLine2',
+    'fae.entityType',
+    'fae.address',
     'fae.city',
     'fae.state',
     'fae.zip',
-    'fae.email',
     'fae.phone',
   ],
 };
 
 /**
- * Given a server error map, find the earliest step that owns any of the failed
- * fields. Without this, a validation failure raised at submit time would show a
- * summary on the review screen pointing at inputs the user cannot see.
+ * The earliest step owning any failed field.
+ *
+ * Without this, a rejection raised at submit time would show a summary on the
+ * review screen pointing at inputs the filer cannot see.
  */
 export function firstStepWithErrors(errors) {
   const keys = Object.keys(errors || {});
@@ -87,70 +87,42 @@ export function firstStepWithErrors(errors) {
 
 export const FIELD_LABELS = {
   'complaint.complaintType': 'Complaint type',
-  'complaint.description': 'Complaint description',
-  'complaint.actionsTaken': 'Actions taken',
+  'complaint.description': 'What happened',
+  'complaint.actionsTaken': 'Actions already taken',
   'complaint.incidentDate': 'Incident date',
-  'complaint.prevTrackingId': 'Previous tracking ID',
-  'complaint.transactionType': 'Complaint transaction type',
-  'complainant.orgName': 'Complainant organization',
-  'complainant.orgType': 'Organization type',
+  'complaint.transactionType': 'Transaction type',
+  'complaint.previousTrackingId': 'Previous complaint tracking ID',
   'complainant.firstName': 'First name',
   'complainant.lastName': 'Last name',
-  'complainant.city': 'City/town',
-  'complainant.state': 'State/territory',
-  'complainant.zip': 'ZIP code',
-  'complainant.email': 'Email address',
-  'complainant.phone': 'Contact phone number',
-  'fae.orgName': 'FAE organization',
-  'fae.orgType': 'Organization type',
-  'fae.contactFirstName': 'First name',
-  'fae.contactLastName': 'Last name',
-  'fae.city': 'City/town',
-  'fae.state': 'State/territory',
-  'fae.zip': 'ZIP code',
-  'fae.email': 'Contact email address',
-  'fae.phone': 'Phone number',
+  'complainant.email': 'Email',
+  'complainant.phone': 'Phone',
+  'complainant.role': 'Your role',
+  'fae.orgName': 'Organization name',
+  'fae.entityType': 'Entity type',
+  'fae.address': 'Street address',
+  'fae.city': 'City',
+  'fae.state': 'State',
+  'fae.zip': 'ZIP',
+  'fae.phone': 'Contact phone',
 };
 
-/* ---------------------------------------------------------- per-step rules -- */
-
-function checkContactBlock(section, data, errors, labels) {
-  if (isBlank(data.email)) {
-    errors[`${section}.email`] = `${labels.email} is required.`;
-  } else if (!EMAIL_RE.test(data.email.trim())) {
-    errors[`${section}.email`] = 'Enter a valid email address.';
-  }
-
-  if (isBlank(data.phone)) {
-    errors[`${section}.phone`] = `${labels.phone} is required.`;
-  } else {
-    const count = digits(data.phone).length;
-    if (count < 10 || count > 15) {
-      errors[`${section}.phone`] = 'Enter a valid phone number with 10 to 15 digits.';
-    }
-  }
-
-  if (!isBlank(data.zip) && !ZIP_RE.test(data.zip.trim())) {
-    errors[`${section}.zip`] = 'Enter a valid ZIP code as 12345 or 12345-6789.';
-  }
-}
+/* ----------------------------------------------------------- per-step rules -- */
 
 export function validateStep(stepId, form) {
   const errors = {};
 
-  if (stepId === 'complaint-type') {
-    if (isBlank(form.complaint.complaintType)) {
-      errors['complaint.complaintType'] = 'Select a complaint type to continue.';
-    }
+  if (stepId === 'type' && isBlank(form.complaint.complaintType)) {
+    errors['complaint.complaintType'] = 'Select a complaint type to continue.';
   }
 
-  if (stepId === 'complaint-details') {
-    const { description, incidentDate, transactionType, prevTrackingId } = form.complaint;
+  if (stepId === 'details') {
+    const { description, incidentDate, transactionType, previousTrackingId } = form.complaint;
 
     if (isBlank(description)) {
-      errors['complaint.description'] = 'Complaint description is required.';
-    } else if (description.trim().length > 10000) {
-      errors['complaint.description'] = 'Complaint description must be 10,000 characters or fewer.';
+      errors['complaint.description'] = 'A description of what happened is required.';
+    } else if (description.trim().length > DESCRIPTION_MAX) {
+      errors['complaint.description'] =
+        `The description must be ${DESCRIPTION_MAX.toLocaleString()} characters or fewer.`;
     }
 
     if (isBlank(incidentDate)) {
@@ -160,41 +132,56 @@ export function validateStep(stepId, form) {
     }
 
     if (isBlank(transactionType)) {
-      errors['complaint.transactionType'] = 'Complaint transaction type is required.';
+      errors['complaint.transactionType'] = 'Transaction type is required.';
     }
 
-    if (!isBlank(prevTrackingId) && !TRACKING_ID_RE.test(prevTrackingId.trim())) {
-      errors['complaint.prevTrackingId'] = 'Previous tracking ID must look like CM-26-03384.';
+    if (!isBlank(previousTrackingId) && !TRACKING_ID_RE.test(previousTrackingId.trim())) {
+      errors['complaint.previousTrackingId'] =
+        'Previous tracking ID must look like CM-26-03384.';
     }
   }
 
-  if (stepId === 'complainant-details') {
+  if (stepId === 'complainant') {
     const data = form.complainant;
-    if (isBlank(data.orgName)) {
-      errors['complainant.orgName'] = 'Complainant organization is required.';
-    }
-    if (isBlank(data.orgType)) {
-      errors['complainant.orgType'] = 'Organization type is required.';
-    }
-    if (isBlank(data.firstName)) errors['complainant.firstName'] = 'First name is required.';
-    if (isBlank(data.lastName)) errors['complainant.lastName'] = 'Last name is required.';
 
-    checkContactBlock('complainant', data, errors, {
-      email: 'Email address',
-      phone: 'Contact phone number',
-    });
+    if (isBlank(data.role)) errors['complainant.role'] = 'Your role is required.';
+
+    // Identity is required only when not filing anonymously.
+    if (!data.anonymous) {
+      if (isBlank(data.firstName)) errors['complainant.firstName'] = 'First name is required.';
+      if (isBlank(data.lastName)) errors['complainant.lastName'] = 'Last name is required.';
+      if (isBlank(data.email)) {
+        errors['complainant.email'] = 'Email is required.';
+      }
+    }
+
+    if (!isBlank(data.email) && !EMAIL_RE.test(data.email.trim())) {
+      errors['complainant.email'] = 'Enter a valid email address.';
+    }
+
+    if (!isBlank(data.phone)) {
+      const count = digits(data.phone).length;
+      if (count < 10 || count > 15) {
+        errors['complainant.phone'] = 'Enter a valid phone number with 10 to 15 digits.';
+      }
+    }
   }
 
-  if (stepId === 'fae-details') {
+  if (stepId === 'fae') {
     const data = form.fae;
-    if (isBlank(data.orgName)) errors['fae.orgName'] = 'FAE organization is required.';
-    if (isBlank(data.contactFirstName)) errors['fae.contactFirstName'] = 'First name is required.';
-    if (isBlank(data.contactLastName)) errors['fae.contactLastName'] = 'Last name is required.';
+    if (isBlank(data.orgName)) errors['fae.orgName'] = 'Organization name is required.';
+    if (isBlank(data.entityType)) errors['fae.entityType'] = 'Entity type is required.';
 
-    checkContactBlock('fae', data, errors, {
-      email: 'Contact email address',
-      phone: 'Phone number',
-    });
+    if (!isBlank(data.zip) && !ZIP_RE.test(data.zip.trim())) {
+      errors['fae.zip'] = 'Enter a valid ZIP code as 12345 or 12345-6789.';
+    }
+
+    if (!isBlank(data.phone)) {
+      const count = digits(data.phone).length;
+      if (count < 10 || count > 15) {
+        errors['fae.phone'] = 'Enter a valid phone number with 10 to 15 digits.';
+      }
+    }
   }
 
   return errors;
@@ -205,39 +192,27 @@ export function emptyForm() {
   return {
     complaint: {
       complaintType: '',
+      transactionType: '',
       description: '',
       actionsTaken: '',
       incidentDate: '',
-      prevTrackingId: '',
-      transactionType: '',
+      previousTrackingId: '',
     },
     complainant: {
-      anonymous: false,
-      orgId: null,
-      orgName: '',
-      orgType: '',
       firstName: '',
       lastName: '',
-      addressLine1: '',
-      addressLine2: '',
-      city: '',
-      state: '',
-      zip: '',
       email: '',
       phone: '',
+      role: '',
+      anonymous: false,
     },
     fae: {
-      orgId: null,
       orgName: '',
-      orgType: '',
-      contactFirstName: '',
-      contactLastName: '',
-      addressLine1: '',
-      addressLine2: '',
+      entityType: '',
+      address: '',
       city: '',
       state: '',
       zip: '',
-      email: '',
       phone: '',
     },
   };

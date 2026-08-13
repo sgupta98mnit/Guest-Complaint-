@@ -1,25 +1,25 @@
 import {
   COMPLAINT_TYPES,
   TRANSACTION_TYPES,
-  ORG_TYPES,
+  COMPLAINANT_ROLES,
+  ENTITY_TYPES,
   STATES,
-  REVIEW_ACTIONS,
+  ACTIONS,
 } from './referenceData.js';
 
-// Server-side validation. The client validates the same rules for fast feedback,
-// but this is the copy that actually protects the database - the client's
-// dropdowns are just suggestions as far as the server is concerned.
+// Server-side validation. The client checks the same rules for fast feedback,
+// but this is the copy that protects the database - as far as the server is
+// concerned the client's dropdowns are only suggestions.
 //
-// Every function returns a flat `{ 'section.field': 'message' }` map. The keys
-// are namespaced by section so the wizard can route an error back to the step
-// that owns it instead of dumping everything on the review screen.
+// Every function returns a flat `{ 'section.field': message }` map. Keys are
+// namespaced by section so the wizard can route each message back to the step
+// that owns it rather than dumping them all on the review screen.
 
-const MAX = { short: 200, description: 10_000, note: 5_000 };
+const MAX = { short: 200, description: 4_000, actions: 4_000, note: 5_000 };
 
-// Deliberately permissive. Fully validating an address per RFC 5322 is a
-// well-known trap (and rejects legitimate addresses like `user+tag@host`); the
-// only real proof an address works is sending to it, which is exactly what the
-// OTP verification step does.
+// Deliberately permissive. Fully validating an address per RFC 5322 is a known
+// trap that rejects legitimate addresses; the only real proof an address works
+// is sending to it.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZIP_RE = /^\d{5}(-\d{4})?$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,11 +36,9 @@ export function blankToNull(value) {
   return trimmed === '' ? null : trimmed;
 }
 
-function isBlank(value) {
-  return blankToNull(value) === null;
-}
+const isBlank = (value) => blankToNull(value) === null;
 
-/** True only for a real calendar date - rejects 2026-02-30, which `new Date` happily accepts. */
+/** True only for a real calendar date - rejects 2026-02-30, which `new Date` accepts. */
 function isRealDate(value) {
   if (!ISO_DATE_RE.test(value)) return false;
   const [y, m, d] = value.split('-').map(Number);
@@ -50,9 +48,7 @@ function isRealDate(value) {
   );
 }
 
-function todayISO(now = new Date()) {
-  return now.toISOString().slice(0, 10);
-}
+const todayISO = (now = new Date()) => now.toISOString().slice(0, 10);
 
 class ErrorBag {
   constructor(section) {
@@ -66,8 +62,7 @@ class ErrorBag {
 
   add(field, message) {
     const key = this.#key(field);
-    // First error on a field wins - it's the most specific one we checked.
-    if (!this.errors[key]) this.errors[key] = message;
+    if (!this.errors[key]) this.errors[key] = message; // first error on a field wins
     return this;
   }
 
@@ -122,10 +117,10 @@ export function validateComplaintSection(complaint = {}, now = new Date()) {
   bag
     .required('complaintType', complaint.complaintType, 'Complaint type')
     .oneOf('complaintType', complaint.complaintType, COMPLAINT_TYPE_VALUES, 'complaint type')
-    .required('description', complaint.description, 'Complaint description')
-    .maxLength('description', complaint.description, MAX.description, 'Complaint description')
-    .maxLength('actionsTaken', complaint.actionsTaken, MAX.description, 'Actions taken')
-    .required('transactionType', complaint.transactionType, 'Complaint transaction type')
+    .required('description', complaint.description, 'A description of what happened')
+    .maxLength('description', complaint.description, MAX.description, 'The description')
+    .maxLength('actionsTaken', complaint.actionsTaken, MAX.actions, 'Actions already taken')
+    .required('transactionType', complaint.transactionType, 'Transaction type')
     .oneOf('transactionType', complaint.transactionType, TRANSACTION_TYPES, 'transaction type')
     .required('incidentDate', complaint.incidentDate, 'Incident date');
 
@@ -134,17 +129,16 @@ export function validateComplaintSection(complaint = {}, now = new Date()) {
     if (!isRealDate(incidentDate)) {
       bag.add('incidentDate', 'Enter a valid date in YYYY-MM-DD format.');
     } else if (incidentDate > todayISO(now)) {
-      // String comparison is safe here: ISO dates sort lexicographically.
+      // ISO dates sort lexicographically, so a string comparison is correct.
       bag.add('incidentDate', 'Incident date cannot be in the future.');
     }
   }
 
-  // Optional back-reference to an earlier filing. We check the shape but
-  // deliberately do not check that the complaint exists - confirming or denying
-  // that a tracking id is real would let anyone probe for valid ids.
-  const prev = blankToNull(complaint.prevTrackingId);
-  if (prev && !TRACKING_ID_RE.test(prev)) {
-    bag.add('prevTrackingId', 'Previous tracking ID must look like CM-26-03384.');
+  // Shape is checked but existence is not: confirming that a tracking ID is real
+  // would let anyone probe for valid ones through a public endpoint.
+  const previous = blankToNull(complaint.previousTrackingId);
+  if (previous && !TRACKING_ID_RE.test(previous)) {
+    bag.add('previousTrackingId', 'Previous tracking ID must look like CM-26-03384.');
   }
 
   return bag.errors;
@@ -152,28 +146,29 @@ export function validateComplaintSection(complaint = {}, now = new Date()) {
 
 export function validateComplainantSection(complainant = {}) {
   const bag = new ErrorBag('complainant');
+  const anonymous = Boolean(complainant.anonymous);
 
-  // Note that these stay required even when `anonymous` is true. Anonymity in
-  // ASETT means "do not disclose my identity to the filed-against entity", not
-  // "do not collect it" - CMS still needs to be able to reach the complainant.
+  // Role is required either way - it frames the complaint regardless of whether
+  // the filer is identified.
   bag
-    .required('orgName', complainant.orgName, 'Complainant organization')
-    .maxLength('orgName', complainant.orgName, MAX.short, 'Complainant organization')
-    .required('orgType', complainant.orgType, 'Organization type')
-    .oneOf('orgType', complainant.orgType, ORG_TYPES, 'organization type')
-    .required('firstName', complainant.firstName, 'First name')
+    .required('role', complainant.role, 'Your role')
+    .oneOf('role', complainant.role, COMPLAINANT_ROLES, 'role');
+
+  // Identity is required only when the filer is not anonymous. Filing
+  // anonymously withholds these from the filed-against entity, with the caveat
+  // that CMS may be unable to investigate without them.
+  if (!anonymous) {
+    bag
+      .required('firstName', complainant.firstName, 'First name')
+      .required('lastName', complainant.lastName, 'Last name')
+      .required('email', complainant.email, 'Email');
+  }
+
+  bag
     .maxLength('firstName', complainant.firstName, MAX.short, 'First name')
-    .required('lastName', complainant.lastName, 'Last name')
     .maxLength('lastName', complainant.lastName, MAX.short, 'Last name')
-    .required('email', complainant.email, 'Email address')
     .email('email', complainant.email, 'email address')
-    .required('phone', complainant.phone, 'Contact phone number')
-    .phone('phone', complainant.phone, 'phone number')
-    .oneOf('state', complainant.state, STATES, 'state')
-    .zip('zip', complainant.zip, 'ZIP code')
-    .maxLength('addressLine1', complainant.addressLine1, MAX.short, 'Address line 1')
-    .maxLength('addressLine2', complainant.addressLine2, MAX.short, 'Address line 2')
-    .maxLength('city', complainant.city, MAX.short, 'City/town');
+    .phone('phone', complainant.phone, 'phone number');
 
   return bag.errors;
 }
@@ -182,22 +177,15 @@ export function validateFaeSection(fae = {}) {
   const bag = new ErrorBag('fae');
 
   bag
-    .required('orgName', fae.orgName, 'FAE organization')
-    .maxLength('orgName', fae.orgName, MAX.short, 'FAE organization')
-    .oneOf('orgType', fae.orgType, ORG_TYPES, 'organization type')
-    .required('contactFirstName', fae.contactFirstName, 'First name')
-    .maxLength('contactFirstName', fae.contactFirstName, MAX.short, 'First name')
-    .required('contactLastName', fae.contactLastName, 'Last name')
-    .maxLength('contactLastName', fae.contactLastName, MAX.short, 'Last name')
-    .required('email', fae.email, 'Contact email address')
-    .email('email', fae.email, 'email address')
-    .required('phone', fae.phone, 'Phone number')
-    .phone('phone', fae.phone, 'phone number')
+    .required('orgName', fae.orgName, 'Organization name')
+    .maxLength('orgName', fae.orgName, MAX.short, 'Organization name')
+    .required('entityType', fae.entityType, 'Entity type')
+    .oneOf('entityType', fae.entityType, ENTITY_TYPES, 'entity type')
+    .maxLength('address', fae.address, MAX.short, 'Street address')
+    .maxLength('city', fae.city, MAX.short, 'City')
     .oneOf('state', fae.state, STATES, 'state')
     .zip('zip', fae.zip, 'ZIP code')
-    .maxLength('addressLine1', fae.addressLine1, MAX.short, 'Address line 1')
-    .maxLength('addressLine2', fae.addressLine2, MAX.short, 'Address line 2')
-    .maxLength('city', fae.city, MAX.short, 'City/town');
+    .phone('phone', fae.phone, 'phone number');
 
   return bag.errors;
 }
@@ -211,44 +199,16 @@ export function validateSubmission(payload = {}, now = new Date()) {
   };
 }
 
-/**
- * A new organization created inline from the wizard.
- *
- * Address and city/state/ZIP are required here even though they are optional on
- * the complaint itself: an organization record is reused across complaints, so
- * it is worth insisting it be complete at the point of creation rather than
- * accumulating half-filled records that every later filer inherits.
- */
-export function validateOrganization(org = {}) {
+export function validateAction(payload = {}) {
   const bag = new ErrorBag('');
 
   bag
-    .required('name', org.name, 'Organization name')
-    .maxLength('name', org.name, MAX.short, 'Organization name')
-    .required('addressLine1', org.addressLine1, 'Address line 1')
-    .maxLength('addressLine1', org.addressLine1, MAX.short, 'Address line 1')
-    .maxLength('addressLine2', org.addressLine2, MAX.short, 'Address line 2')
-    .required('city', org.city, 'City/town')
-    .maxLength('city', org.city, MAX.short, 'City/town')
-    .required('state', org.state, 'State/province')
-    .oneOf('state', org.state, STATES, 'state')
-    .required('zip', org.zip, 'ZIP code')
-    .zip('zip', org.zip, 'ZIP code')
-    .phone('phone', org.phone, 'phone number');
-
-  return bag.errors;
-}
-
-export function validateReview(payload = {}) {
-  const bag = new ErrorBag('');
-
-  bag
-    .required('action', payload.action, 'Review action')
-    .oneOf('action', payload.action, REVIEW_ACTIONS, 'review action')
-    // The note is required for every action, including approval - the whole
-    // point of the history table is that no status change is unexplained.
-    .required('note', payload.note, 'Review note')
-    .maxLength('note', payload.note, MAX.note, 'Review note');
+    .required('action', payload.action, 'A decision')
+    .oneOf('action', payload.action, ACTIONS, 'decision')
+    // Required for every action, including approval - the point of the history
+    // is that no status change is left unexplained.
+    .required('note', payload.note, 'Reviewer note')
+    .maxLength('note', payload.note, MAX.note, 'Reviewer note');
 
   return bag.errors;
 }

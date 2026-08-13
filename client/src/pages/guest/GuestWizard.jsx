@@ -1,93 +1,70 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../../api.js';
-import { Stepper } from '../../components/Stepper.jsx';
+import { useReference } from '../../reference.jsx';
 import { ErrorSummary } from '../../components/ErrorSummary.jsx';
+import { ProgressRail } from './ProgressRail.jsx';
+import { ReviewSubmit } from './ReviewSubmit.jsx';
+import {
+  GettingStarted,
+  ComplaintType,
+  ComplaintDetails,
+  YourInformation,
+  FiledAgainstEntity,
+  Confirmation,
+} from './steps.jsx';
 import {
   STEPS,
+  STEP_BLURBS,
   emptyForm,
   validateStep,
   firstStepWithErrors,
   FIELD_LABELS,
 } from '../../validation.js';
 
-import { EmailVerificationModal } from './EmailVerificationModal.jsx';
-import { GettingStarted } from './steps/GettingStarted.jsx';
-import { ComplaintType } from './steps/ComplaintType.jsx';
-import { ComplaintDetails } from './steps/ComplaintDetails.jsx';
-import { ComplainantDetails } from './steps/ComplainantDetails.jsx';
-import { FaeDetails } from './steps/FaeDetails.jsx';
-import { ReviewSubmit } from './steps/ReviewSubmit.jsx';
-import { Confirmation } from './steps/Confirmation.jsx';
-
-const CONFIRMATION_INDEX = STEPS.length - 1;
+const CONFIRM_INDEX = STEPS.length - 1;
 
 /**
  * Orchestrates the guest filing flow.
  *
  * The wizard owns all form state in one object and decides when a step may be
- * left; the step components are presentational and just render fields against
- * that state. Keeping validation and navigation here means there is exactly one
- * place where "can the user continue?" is answered.
+ * left; the step components are presentational. Keeping validation and
+ * navigation here means there is exactly one place that answers "may the filer
+ * continue?".
  *
- * Nothing is persisted between steps - no drafts, by design. A guest who
- * reloads loses the form, which matches the real tool's guest behaviour.
+ * Nothing is persisted between steps — no drafts, by design. Leaving loses the
+ * filing, which is what the handoff specifies for guests.
  */
 export function GuestWizard() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { email: verifiedEmail, verificationToken } = location.state || {};
+  const { reference, error: referenceError } = useReference();
 
   const [stepIndex, setStepIndex] = useState(0);
-  const [form, setForm] = useState(() => {
-    const initial = emptyForm();
-    // The verified address is the one the complaint is filed under, so it is
-    // seeded here and shown read-only on the complainant step.
-    if (verifiedEmail) initial.complainant.email = verifiedEmail;
-    return initial;
-  });
+  const [maxVisited, setMaxVisited] = useState(0);
+  const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
-  const [reference, setReference] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [banner, setBanner] = useState(null);
-  const [trackingId, setTrackingId] = useState(null);
-
-  // The verification token starts in router state but lives here, because it can
-  // be replaced without leaving the wizard - see `reverify` below.
-  const [token, setToken] = useState(verificationToken);
-  const [reverify, setReverify] = useState(false);
+  const [result, setResult] = useState(null);
 
   const headingRef = useRef(null);
-  const isConfirmation = stepIndex === CONFIRMATION_INDEX;
   const step = STEPS[stepIndex];
+  const isConfirmation = stepIndex === CONFIRM_INDEX;
 
-  useEffect(() => {
-    api
-      .reference()
-      .then(setReference)
-      .catch(() => setBanner('Could not load form options. Is the API running?'));
-  }, []);
-
-  // Move focus to the new step's heading on every transition. Without this a
-  // keyboard or screen-reader user stays parked on the "Next" button and gets
+  // Move focus to the step heading on every transition. Without this a keyboard
+  // or screen-reader user stays parked on the button they just pressed and gets
   // no announcement that the page changed underneath them.
   useEffect(() => {
     headingRef.current?.focus();
   }, [stepIndex]);
 
-  function update(section, field, value) {
+  function set(section, field, value) {
     setForm((prev) => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   }
 
-  /**
-   * Patch several fields of a section at once.
-   *
-   * Selecting an organization rewrites the name and five address fields
-   * together. Doing that as six sequential `update` calls would queue six
-   * separate state updates off the same stale snapshot.
-   */
-  function updateMany(section, patch) {
-    setForm((prev) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
+  function goTo(index) {
+    setErrors({});
+    setBanner(null);
+    setStepIndex(index);
+    setMaxVisited((seen) => Math.max(seen, index));
   }
 
   function goNext() {
@@ -96,45 +73,41 @@ export function GuestWizard() {
       setErrors(stepErrors);
       return;
     }
-    setErrors({});
-    setBanner(null);
-    setStepIndex((index) => Math.min(index + 1, CONFIRMATION_INDEX));
+    goTo(Math.min(stepIndex + 1, CONFIRM_INDEX));
   }
 
-  function goBack() {
-    setErrors({});
-    setBanner(null);
-    setStepIndex((index) => Math.max(index - 1, 0));
+  const goBack = () => goTo(Math.max(stepIndex - 1, 0));
+
+  function restart() {
+    setForm(emptyForm());
+    setResult(null);
+    setMaxVisited(0);
+    goTo(0);
   }
 
-  async function submit(overrideToken) {
-    // Only a string is a token. Guarding the type means an accidental
-    // `onClick={submit}` - which would pass a click event here - degrades to
-    // using the stored token instead of sending an event object to the server.
-    const activeToken = typeof overrideToken === 'string' ? overrideToken : token;
-
+  async function submit() {
     setSubmitting(true);
     setBanner(null);
     try {
-      const result = await api.submitComplaint(form, activeToken);
-      setTrackingId(result.trackingId);
+      const payload = await api.submitComplaint(form);
+      setResult({
+        trackingId: payload.trackingId,
+        receivedAt: new Date().toLocaleString(undefined, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }),
+      });
       setErrors({});
-      setStepIndex(CONFIRMATION_INDEX);
+      setStepIndex(CONFIRM_INDEX);
+      setMaxVisited(CONFIRM_INDEX);
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
         setErrors(err.errors);
-        // Server-side rejections can name fields from earlier steps. Jump back
-        // to the first step that owns one, otherwise the summary would point at
-        // inputs that are not on screen.
+        // A server rejection can name fields from earlier steps. Jump back to
+        // the first step that owns one, otherwise the summary points at inputs
+        // that are not on screen.
         const target = firstStepWithErrors(err.errors);
         if (target !== null && target !== stepIndex) setStepIndex(target);
-      } else if (err.reason === 'unverified' || err.reason === 'email_mismatch') {
-        // Verification state is held in server memory, so it is lost if the API
-        // restarts and it expires after 30 minutes - both of which can happen
-        // while someone is part-way through a long form. Sending the filer back
-        // to the start would destroy everything they had typed, so re-verify in
-        // place and retry with the completed form intact.
-        setReverify(true);
       } else {
         setBanner(err.message);
       }
@@ -143,104 +116,91 @@ export function GuestWizard() {
     }
   }
 
-  // The wizard is only reachable with a verification token. Landing here
-  // directly - a bookmark, a refresh - sends the user back to verify.
-  if (!verificationToken && !trackingId) {
-    return <Navigate to="/" replace />;
+  if (referenceError) {
+    return (
+      <div className="container" style={{ padding: '36px 32px 72px' }}>
+        <div className="callout callout--error" role="alert">
+          {referenceError}
+        </div>
+      </div>
+    );
   }
 
-  const reverifyModal = reverify && (
-    <EmailVerificationModal
-      initialEmail={form.complainant.email}
-      lockEmail
-      intro="Your verification has expired, so the complaint was not submitted. Nothing you entered has been lost - request a new code to finish submitting."
-      onClose={() => {
-        setReverify(false);
-        setBanner(
-          'Your complaint was not submitted. Verify your email address again and press Submit.',
-        );
-      }}
-      onVerified={({ verificationToken: fresh }) => {
-        setToken(fresh);
-        setReverify(false);
-        // Retry immediately with the new token - state updates are async, so it
-        // is passed directly rather than read back from `token`.
-        submit(fresh);
-      }}
-    />
-  );
+  if (!reference) {
+    return (
+      <div className="container" style={{ padding: '36px 32px 72px' }}>
+        <p>Loading…</p>
+      </div>
+    );
+  }
 
-  const stepProps = { form, update, updateMany, errors, reference, verifiedEmail };
+  const stepProps = { form, set, errors, reference };
 
   return (
     <>
-      <Stepper steps={STEPS} currentIndex={stepIndex} />
-
-      <div className="card">
-        <h1 tabIndex={-1} ref={headingRef}>
-          {step.label}
-        </h1>
-
-        {banner && (
-          <div className="alert alert--error" role="alert">
-            {banner}
-          </div>
-        )}
-
-        {!isConfirmation && (
-          <ErrorSummary errors={errors} fieldLabels={FIELD_LABELS} />
-        )}
-
-        {step.id === 'getting-started' && <GettingStarted />}
-        {step.id === 'complaint-type' && <ComplaintType {...stepProps} />}
-        {step.id === 'complaint-details' && <ComplaintDetails {...stepProps} />}
-        {step.id === 'complainant-details' && <ComplainantDetails {...stepProps} />}
-        {step.id === 'fae-details' && <FaeDetails {...stepProps} />}
-        {step.id === 'review-submit' && (
-          <ReviewSubmit form={form} onEditStep={(index) => setStepIndex(index)} />
-        )}
-        {step.id === 'confirmation' && <Confirmation trackingId={trackingId} />}
-
-        {!isConfirmation && (
-          <div className="btn-row">
-            <div className="row">
-              <button type="button" className="btn btn--secondary" onClick={goBack} disabled={stepIndex === 0}>
-                Previous
-              </button>
-              <button type="button" className="btn--link" onClick={() => navigate('/')}>
-                Exit
-              </button>
-            </div>
-
-            {step.id === 'review-submit' ? (
-              // Wrapped rather than `onClick={submit}`, which would pass React's
-              // click event into submit()'s token argument.
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => submit()}
-                disabled={submitting}
-              >
-                {submitting ? 'Submitting...' : 'Submit'}
-              </button>
-            ) : (
-              <button type="button" className="btn btn--primary" onClick={goNext}>
-                {stepIndex === 0 ? 'Get Started' : 'Next'}
-              </button>
-            )}
-          </div>
-        )}
-
-        {isConfirmation && (
-          <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn--primary" onClick={() => navigate('/')}>
-              Done
-            </button>
-          </div>
-        )}
+      <div className="wizard__title-band">
+        <div className="container" style={{ padding: '26px 32px 30px' }}>
+          <div className="eyebrow">File a complaint · Guest</div>
+          <h1 className="wizard__h1" tabIndex={-1} ref={headingRef}>
+            {step.label}
+          </h1>
+          <p className="wizard__blurb">{STEP_BLURBS[step.id]}</p>
+        </div>
       </div>
 
-      {reverifyModal}
+      <div className="container wizard__grid">
+        <ProgressRail currentIndex={stepIndex} maxVisited={maxVisited} onJump={goTo} />
+
+        <div>
+          <div className={`card${isConfirmation ? '' : ' card--pad'}`}>
+            {banner && (
+              <div className="callout callout--error" role="alert" style={{ marginBottom: 24 }}>
+                {banner}
+              </div>
+            )}
+
+            {!isConfirmation && <ErrorSummary errors={errors} labels={FIELD_LABELS} />}
+
+            {step.id === 'start' && (
+              <GettingStarted onStart={goNext} onExit={() => window.location.assign('/')} />
+            )}
+            {step.id === 'type' && <ComplaintType {...stepProps} />}
+            {step.id === 'details' && <ComplaintDetails {...stepProps} />}
+            {step.id === 'complainant' && <YourInformation {...stepProps} />}
+            {step.id === 'fae' && <FiledAgainstEntity {...stepProps} />}
+            {step.id === 'review' && <ReviewSubmit form={form} onEditStep={goTo} />}
+            {step.id === 'confirm' && (
+              <Confirmation
+                trackingId={result?.trackingId}
+                receivedAt={result?.receivedAt}
+                onRestart={restart}
+              />
+            )}
+
+            {step.id !== 'start' && !isConfirmation && (
+              <div className="wizard__footer">
+                <button type="button" className="btn btn--secondary" onClick={goBack}>
+                  Previous
+                </button>
+                {step.id === 'review' ? (
+                  <button
+                    type="button"
+                    className="btn btn--success"
+                    onClick={() => submit()}
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Submitting…' : 'Submit complaint'}
+                  </button>
+                ) : (
+                  <button type="button" className="btn btn--primary" onClick={() => goNext()}>
+                    Next
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </>
   );
 }

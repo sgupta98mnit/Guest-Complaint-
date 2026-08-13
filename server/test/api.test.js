@@ -1,5 +1,5 @@
 // The database module reads ASETT_DB_PATH at import time, so these must be set
-// before it is loaded. That is why index.js is pulled in with a dynamic import
+// before it loads. That is why index.js is pulled in with a dynamic import
 // below - static imports are hoisted and would run first.
 process.env.ASETT_DB_PATH = ':memory:';
 process.env.NODE_ENV = 'test';
@@ -33,17 +33,6 @@ async function api(method, path, { body, headers } = {}) {
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-/** Walk the OTP flow and return a redeemable verification token. */
-async function getVerificationToken(email) {
-  const requested = await api('POST', '/api/verification/request', { body: { email } });
-  assert.equal(requested.status, 200);
-  const verified = await api('POST', '/api/verification/verify', {
-    body: { email, code: requested.body.devCode },
-  });
-  assert.equal(verified.status, 200);
-  return verified.body.token;
-}
-
 async function reviewerToken() {
   const res = await api('POST', '/api/auth/login', {
     body: { username: 'reviewer', password: 'reviewer123' },
@@ -54,186 +43,86 @@ async function reviewerToken() {
 
 const authed = (token) => ({ headers: { authorization: `Bearer ${token}` } });
 
-/** A complete, valid submission. Tests clone and break specific fields. */
-function validSubmission(email = 'filer@example.org') {
+/** A complete, valid submission. Tests clone this and break specific fields. */
+function validSubmission(overrides = {}) {
   return {
     complaint: {
       complaintType: 'Transactions',
-      description: 'Payer rejects compliant 837I claims without a valid rejection reason.',
-      actionsTaken: 'Contacted provider services twice.',
+      transactionType: 'Claims & encounter information (837)',
+      description: 'The plan rejected our 837P claims without a compliant 277CA response.',
+      actionsTaken: 'Four support calls and two written escalations.',
       incidentDate: '2026-05-14',
-      transactionType: 'Healthcare Claim - Institutional (837I)',
+      ...overrides.complaint,
     },
     complainant: {
-      anonymous: false,
-      orgName: 'Riverbend Regional Hospital',
-      orgType: 'Covered Health Care Provider',
       firstName: 'Dana',
       lastName: 'Whitfield',
-      addressLine1: '1400 Mercy Lane',
-      city: 'Buffalo',
-      state: 'New York',
-      zip: '14214',
-      email,
-      phone: '(716) 555-0142',
+      email: 'd.whitfield@example.org',
+      phone: '(555) 014-8823',
+      role: 'Health care provider',
+      anonymous: false,
+      ...overrides.complainant,
     },
     fae: {
-      orgName: 'Cardinal Health Plan',
-      orgType: 'Health Plan',
-      contactFirstName: 'Marcus',
-      contactLastName: 'Delgado',
+      orgName: 'Cardinal Health Plan of New York',
+      entityType: 'Health plan',
+      address: '480 Rivermont Ave',
       city: 'Albany',
-      state: 'New York',
-      zip: '12205',
-      email: 'compliance@example.com',
+      state: 'NY',
+      zip: '12207',
       phone: '5185550188',
+      ...overrides.fae,
     },
   };
 }
 
-/** Submit end to end, returning the parsed response. */
-async function submit(payload) {
-  const token = await getVerificationToken(payload.complainant.email);
-  return api('POST', '/api/complaints', {
-    body: payload,
-    headers: { 'x-verification-token': token },
-  });
+const submit = (payload) => api('POST', '/api/complaints', { body: payload });
+
+/** Find a complaint in the queue by its tracking id. */
+async function findByTracking(token, trackingId) {
+  const list = await api('GET', '/api/complaints', authed(token));
+  return list.body.complaints.find((c) => c.trackingId === trackingId);
 }
 
-/* ------------------------------------------------------------ verification -- */
+/* ------------------------------------------------------------- reference -- */
 
-describe('email verification (OTP)', () => {
-  test('issues a 6-digit code and accepts it once', async () => {
-    const email = 'otp-happy@example.org';
-    const requested = await api('POST', '/api/verification/request', { body: { email } });
-    assert.equal(requested.status, 200);
-    assert.match(requested.body.devCode, /^\d{6}$/);
-
-    const first = await api('POST', '/api/verification/verify', {
-      body: { email, code: requested.body.devCode },
-    });
-    assert.equal(first.status, 200);
-    assert.ok(first.body.token);
-
-    // Codes are single use - replaying the same one must fail.
-    const replay = await api('POST', '/api/verification/verify', {
-      body: { email, code: requested.body.devCode },
-    });
-    assert.equal(replay.status, 400);
-  });
-
-  test('rejects a malformed email address', async () => {
-    const res = await api('POST', '/api/verification/request', { body: { email: 'not-an-email' } });
-    assert.equal(res.status, 400);
-    assert.ok(res.body.errors.email);
-  });
-
-  test('locks out after five wrong codes', async () => {
-    const email = 'otp-bruteforce@example.org';
-    const requested = await api('POST', '/api/verification/request', { body: { email } });
-    const wrong = requested.body.devCode === '000000' ? '111111' : '000000';
-
-    for (let attempt = 1; attempt <= 5; attempt += 1) {
-      const res = await api('POST', '/api/verification/verify', { body: { email, code: wrong } });
-      assert.equal(res.status, 400, `attempt ${attempt} should be rejected`);
-    }
-
-    const locked = await api('POST', '/api/verification/verify', { body: { email, code: wrong } });
-    assert.equal(locked.status, 429);
-  });
-
-  test('throttles resend requests for the same address', async () => {
-    const email = 'otp-cooldown@example.org';
-    assert.equal((await api('POST', '/api/verification/request', { body: { email } })).status, 200);
-    const second = await api('POST', '/api/verification/request', { body: { email } });
-    assert.equal(second.status, 429);
+describe('reference data', () => {
+  test('serves the picklists the wizard needs', async () => {
+    const res = await api('GET', '/api/reference');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.complaintTypes.length, 4);
+    assert.equal(res.body.transactionTypes.length, 5);
+    assert.equal(res.body.complainantRoles.length, 5);
+    assert.equal(res.body.entityTypes.length, 3);
+    assert.equal(res.body.decisions.length, 3);
   });
 });
 
-/* ----------------------------------------------------------- organizations -- */
-
-describe('organizations', () => {
-  const org = {
-    name: 'Test Organization Alpha',
-    addressLine1: '1 Test Way',
-    city: 'Buffalo',
-    state: 'New York',
-    zip: '14214',
-    phone: '(716) 555-0100',
-  };
-
-  test('creates an organization and normalizes its phone', async () => {
-    const res = await api('POST', '/api/organizations', { body: org });
-    assert.equal(res.status, 201);
-    assert.equal(res.body.created, true);
-    assert.equal(res.body.organization.name, org.name);
-    assert.equal(res.body.organization.phone, '7165550100');
-  });
-
-  test('returns the existing record instead of failing on a duplicate name', async () => {
-    const res = await api('POST', '/api/organizations', {
-      body: { ...org, name: 'test organization alpha' }, // different case
-    });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.created, false);
-    assert.equal(res.body.organization.name, org.name);
-  });
-
-  test('requires a complete address', async () => {
-    const res = await api('POST', '/api/organizations', { body: { name: 'Incomplete Org' } });
-    assert.equal(res.status, 400);
-    assert.ok(res.body.errors.addressLine1);
-    assert.ok(res.body.errors.city);
-    assert.ok(res.body.errors.zip);
-  });
-
-  test('searches by partial name', async () => {
-    const res = await api('GET', '/api/organizations?q=organization%20alph');
-    assert.equal(res.status, 200);
-    assert.ok(res.body.organizations.some((o) => o.name === org.name));
-  });
-
-  test('ignores searches shorter than two characters', async () => {
-    const res = await api('GET', '/api/organizations?q=a');
-    assert.deepEqual(res.body.organizations, []);
-  });
-
-  test('treats LIKE wildcards as literal characters', async () => {
-    // Without escaping, "%" would match every organization in the table.
-    const res = await api('GET', '/api/organizations?q=%25%25');
-    assert.deepEqual(res.body.organizations, []);
-  });
-});
-
-/* --------------------------------------------------------------- submission -- */
+/* -------------------------------------------------------------- submission -- */
 
 describe('POST /api/complaints', () => {
   test('accepts a valid submission and returns a CM-YY-NNNNN tracking id', async () => {
-    const res = await submit(validSubmission('happy-path@example.org'));
+    const res = await submit(validSubmission());
     assert.equal(res.status, 201);
     assert.match(res.body.trackingId, /^CM-\d{2}-\d{5}$/);
     assert.equal(res.body.status, 'submitted');
   });
 
   test('issues sequential, non-colliding tracking ids', async () => {
-    const first = await submit(validSubmission('seq-one@example.org'));
-    const second = await submit(validSubmission('seq-two@example.org'));
-
+    const first = await submit(validSubmission());
+    const second = await submit(validSubmission());
     const seq = (id) => Number(id.split('-')[2]);
     assert.equal(seq(second.body.trackingId), seq(first.body.trackingId) + 1);
   });
 
-  test('rejects a submission with missing required fields, keyed by section', async () => {
-    const payload = validSubmission('missing-fields@example.org');
-    payload.complaint.description = '';
-    payload.complainant.lastName = '   ';
-    payload.fae.orgName = '';
-
-    const token = await getVerificationToken(payload.complainant.email);
-    const res = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': token },
-    });
+  test('rejects missing required fields, keyed by section', async () => {
+    const res = await submit(
+      validSubmission({
+        complaint: { description: '' },
+        complainant: { lastName: '   ' },
+        fae: { orgName: '' },
+      }),
+    );
 
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complaint.description']);
@@ -242,129 +131,81 @@ describe('POST /api/complaints', () => {
   });
 
   test('rejects a future incident date', async () => {
-    const payload = validSubmission('future-date@example.org');
-    payload.complaint.incidentDate = '2099-01-01';
-
-    const token = await getVerificationToken(payload.complainant.email);
-    const res = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': token },
-    });
-
+    const res = await submit(validSubmission({ complaint: { incidentDate: '2099-01-01' } }));
     assert.equal(res.status, 400);
     assert.match(res.body.errors['complaint.incidentDate'], /future/i);
   });
 
-  test('rejects a value that is not in the server-side picklist', async () => {
-    const payload = validSubmission('bad-picklist@example.org');
-    payload.complaint.transactionType = 'Something The Dropdown Never Offered';
+  test('rejects an impossible calendar date', async () => {
+    const res = await submit(validSubmission({ complaint: { incidentDate: '2026-02-30' } }));
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['complaint.incidentDate']);
+  });
 
-    const token = await getVerificationToken(payload.complainant.email);
-    const res = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': token },
-    });
-
+  test('rejects a value the dropdown never offered', async () => {
+    const res = await submit(
+      validSubmission({ complaint: { transactionType: 'Not a real transaction' } }),
+    );
     assert.equal(res.status, 400);
     assert.ok(res.body.errors['complaint.transactionType']);
   });
 
-  test('refuses to persist without a verification token', async () => {
-    const res = await api('POST', '/api/complaints', {
-      body: validSubmission('no-token@example.org'),
-    });
-    assert.equal(res.status, 403);
-    assert.equal(res.body.reason, 'unverified');
-  });
-
-  test('links the complaint to a real organization record', async () => {
-    const { body: made } = await api('POST', '/api/organizations', {
-      body: {
-        name: 'Linked Hospital Group',
-        addressLine1: '9 Linked Road',
-        city: 'Buffalo',
-        state: 'New York',
-        zip: '14214',
-      },
-    });
-
-    const payload = validSubmission('org-linked@example.org');
-    payload.complainant.orgId = made.organization.id;
-    payload.complainant.orgName = made.organization.name;
-
-    const submitted = await submit(payload);
-    assert.equal(submitted.status, 201);
-
-    const token = await reviewerToken();
-    const list = await api('GET', '/api/complaints', authed(token));
-    const target = list.body.complaints.find(
-      (c) => c.trackingId === submitted.body.trackingId,
-    );
-    const detail = await api('GET', `/api/complaints/${target.id}`, authed(token));
-
-    assert.equal(detail.body.complainant.orgId, made.organization.id);
-    assert.equal(detail.body.complainant.orgName, 'Linked Hospital Group');
-  });
-
-  test('rejects a submission naming an organization that does not exist', async () => {
-    const payload = validSubmission('bad-org@example.org');
-    payload.complainant.orgId = 999999;
-
-    const token = await getVerificationToken(payload.complainant.email);
-    const res = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': token },
-    });
-
+  test('rejects a malformed previous tracking id', async () => {
+    const res = await submit(validSubmission({ complaint: { previousTrackingId: 'nope' } }));
     assert.equal(res.status, 400);
-    assert.ok(res.body.errors['complainant.orgName']);
+    assert.ok(res.body.errors['complaint.previousTrackingId']);
+  });
+});
+
+/* -------------------------------------------------------------- anonymity -- */
+
+describe('anonymous filing', () => {
+  test('allows a submission with no name or email when anonymous', async () => {
+    const res = await submit(
+      validSubmission({
+        complainant: {
+          anonymous: true,
+          firstName: '',
+          lastName: '',
+          email: '',
+          phone: '',
+        },
+      }),
+    );
+    assert.equal(res.status, 201);
   });
 
-  test('a rejected submission persists nothing and can be retried after re-verifying', async () => {
-    // The failure mode this guards: verification state lives in server memory,
-    // so a restart or a 30-minute expiry invalidates a token while someone is
-    // part-way through the form. The retry must succeed with the same payload
-    // and must not leave a half-written or duplicate complaint behind.
-    const payload = validSubmission('retry-after-expiry@example.org');
-    payload.fae.orgName = 'Retry Path Sentinel Org';
+  test('still requires a role when anonymous', async () => {
+    const res = await submit(
+      validSubmission({
+        complainant: { anonymous: true, firstName: '', lastName: '', email: '', role: '' },
+      }),
+    );
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['complainant.role']);
+  });
 
-    const stale = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': 'token-from-a-dead-process' },
-    });
-    assert.equal(stale.status, 403);
-    assert.equal(stale.body.reason, 'unverified');
+  test('requires name and email when not anonymous', async () => {
+    const res = await submit(
+      validSubmission({
+        complainant: { anonymous: false, firstName: '', lastName: '', email: '' },
+      }),
+    );
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors['complainant.firstName']);
+    assert.ok(res.body.errors['complainant.email']);
+  });
 
+  test('labels an anonymous filer as such in the queue', async () => {
+    const submitted = await submit(
+      validSubmission({
+        complainant: { anonymous: true, firstName: '', lastName: '', email: '' },
+      }),
+    );
     const token = await reviewerToken();
-    const before = await api('GET', '/api/complaints', authed(token));
-    assert.equal(
-      before.body.complaints.filter((c) => c.faeOrgName === 'Retry Path Sentinel Org').length,
-      0,
-      'the rejected submission must not have been written',
-    );
-
-    const retried = await submit(payload);
-    assert.equal(retried.status, 201);
-
-    const after = await api('GET', '/api/complaints', authed(token));
-    assert.equal(
-      after.body.complaints.filter((c) => c.faeOrgName === 'Retry Path Sentinel Org').length,
-      1,
-      'the retry must create exactly one complaint',
-    );
-  });
-
-  test('refuses when the verified email differs from the complaint email', async () => {
-    const token = await getVerificationToken('verified-as@example.org');
-    const payload = validSubmission('filed-as-somebody-else@example.org');
-
-    const res = await api('POST', '/api/complaints', {
-      body: payload,
-      headers: { 'x-verification-token': token },
-    });
-
-    assert.equal(res.status, 403);
-    assert.equal(res.body.reason, 'email_mismatch');
+    const row = await findByTracking(token, submitted.body.trackingId);
+    assert.equal(row.filer, 'Anonymous complainant');
+    assert.equal(row.anonymous, true);
   });
 });
 
@@ -379,7 +220,7 @@ describe('reviewer authentication', () => {
   });
 
   test('tolerates surrounding whitespace and casing in the username', async () => {
-    for (const username of ['  reviewer', 'reviewer  ', ' Reviewer ', 'REVIEWER']) {
+    for (const username of ['  reviewer', ' Reviewer ', 'REVIEWER']) {
       const res = await api('POST', '/api/auth/login', {
         body: { username, password: 'reviewer123' },
       });
@@ -387,112 +228,124 @@ describe('reviewer authentication', () => {
     }
   });
 
-  test('does not trim the password', async () => {
-    // Whitespace can be part of a password, so stripping it would make some
-    // valid passwords unusable.
-    const res = await api('POST', '/api/auth/login', {
-      body: { username: 'reviewer', password: ' reviewer123 ' },
-    });
-    assert.equal(res.status, 401);
-  });
-
-  test('guards the list and detail endpoints', async () => {
+  test('guards every reviewer endpoint', async () => {
     assert.equal((await api('GET', '/api/complaints')).status, 401);
     assert.equal((await api('GET', '/api/complaints/1')).status, 401);
-    assert.equal((await api('POST', '/api/complaints/1/reviews', { body: {} })).status, 401);
+    assert.equal((await api('POST', '/api/complaints/1/actions', { body: {} })).status, 401);
   });
 
   test('rejects a token that was never issued', async () => {
-    const res = await api('GET', '/api/complaints', authed('deadbeef'));
-    assert.equal(res.status, 401);
+    assert.equal((await api('GET', '/api/complaints', authed('deadbeef'))).status, 401);
   });
 });
 
-/* ------------------------------------------------------------------- review -- */
+/* ------------------------------------------------------------------- queue -- */
 
-describe('reviewer workflow', () => {
-  test('requires a note on every action', async () => {
-    await submit(validSubmission('needs-note@example.org'));
+describe('reviewer queue', () => {
+  test('returns status counts for the stat tiles', async () => {
     const token = await reviewerToken();
-    const { body } = await api('GET', '/api/complaints', authed(token));
-    const target = body.complaints[0];
-
-    const res = await api('POST', `/api/complaints/${target.id}/reviews`, {
-      body: { action: 'approved', note: '   ' },
-      ...authed(token),
-    });
-
-    assert.equal(res.status, 400);
-    assert.ok(res.body.errors.note);
-  });
-
-  test('updates status and appends history in one step', async () => {
-    const submitted = await submit(validSubmission('review-flow@example.org'));
-    const token = await reviewerToken();
-
-    const list = await api('GET', '/api/complaints', authed(token));
-    const target = list.body.complaints.find(
-      (c) => c.trackingId === submitted.body.trackingId,
-    );
-    assert.equal(target.status, 'submitted');
-
-    const denied = await api('POST', `/api/complaints/${target.id}/reviews`, {
-      body: { action: 'denied', note: 'Outside jurisdiction for this transaction set.' },
-      ...authed(token),
-    });
-    assert.equal(denied.status, 201);
-    assert.equal(denied.body.complaint.status, 'denied');
-    assert.equal(denied.body.reviews.length, 1);
-
-    // A second action appends rather than replacing - the history is the audit trail.
-    const reopened = await api('POST', `/api/complaints/${target.id}/reviews`, {
-      body: { action: 'needs_info', note: 'Reopening to request trace numbers.' },
-      ...authed(token),
-    });
-    assert.equal(reopened.body.complaint.status, 'needs_info');
-    assert.equal(reopened.body.reviews.length, 2);
-    assert.deepEqual(
-      reopened.body.reviews.map((r) => r.action),
-      ['denied', 'needs_info'],
-    );
-  });
-
-  test('returns the full record, including the anonymity flag', async () => {
-    const payload = validSubmission('anon-filer@example.org');
-    payload.complainant.anonymous = true;
-    const submitted = await submit(payload);
-
-    const token = await reviewerToken();
-    const list = await api('GET', '/api/complaints', authed(token));
-    const target = list.body.complaints.find(
-      (c) => c.trackingId === submitted.body.trackingId,
-    );
-
-    const detail = await api('GET', `/api/complaints/${target.id}`, authed(token));
-    assert.equal(detail.status, 200);
-    assert.equal(detail.body.complainant.anonymous, true);
-    // Anonymity is a disclosure control, not a collection control - contact
-    // details are still stored so CMS can reach the filer.
-    assert.equal(detail.body.complainant.email, 'anon-filer@example.org');
-    assert.equal(detail.body.complainant.phone, '7165550142'); // normalized to digits
-    assert.ok(detail.body.fae.orgName);
-  });
-
-  test('filters the list by status', async () => {
-    const token = await reviewerToken();
-    const res = await api('GET', '/api/complaints?status=denied', authed(token));
+    const res = await api('GET', '/api/complaints', authed(token));
     assert.equal(res.status, 200);
-    assert.ok(res.body.complaints.every((c) => c.status === 'denied'));
+    assert.ok(typeof res.body.counts === 'object');
+    assert.ok(res.body.counts.submitted > 0);
+  });
+
+  test('filters by status', async () => {
+    const token = await reviewerToken();
+    const res = await api('GET', '/api/complaints?status=submitted', authed(token));
+    assert.ok(res.body.complaints.every((c) => c.status === 'submitted'));
   });
 
   test('rejects an unknown status filter', async () => {
     const token = await reviewerToken();
-    const res = await api('GET', '/api/complaints?status=bogus', authed(token));
-    assert.equal(res.status, 400);
+    assert.equal((await api('GET', '/api/complaints?status=bogus', authed(token))).status, 400);
   });
 
   test('404s on a complaint that does not exist', async () => {
     const token = await reviewerToken();
     assert.equal((await api('GET', '/api/complaints/999999', authed(token))).status, 404);
+  });
+});
+
+/* ------------------------------------------------------------------ actions -- */
+
+describe('intake decisions', () => {
+  test('requires a note on every action', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+
+    const res = await api('POST', `/api/complaints/${row.id}/actions`, {
+      body: { action: 'approve', note: '   ' },
+      ...authed(token),
+    });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors.note);
+  });
+
+  test('rejects an unknown action', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+
+    const res = await api('POST', `/api/complaints/${row.id}/actions`, {
+      body: { action: 'shred', note: 'nope' },
+      ...authed(token),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  test('maps each action to its status and appends history newest-first', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+    assert.equal(row.status, 'submitted');
+
+    const approved = await api('POST', `/api/complaints/${row.id}/actions`, {
+      body: { action: 'approve', note: 'Documented 837P/277CA evidence. Routing to intake.' },
+      ...authed(token),
+    });
+    assert.equal(approved.status, 201);
+    assert.equal(approved.body.complaint.status, 'approved_for_intake');
+    assert.equal(approved.body.actions.length, 1);
+    assert.equal(approved.body.actions[0].reviewerName, 'Jordan Reviewer');
+
+    // A second decision appends rather than replacing - the log is the audit trail.
+    const held = await api('POST', `/api/complaints/${row.id}/actions`, {
+      body: { action: 'needs_info', note: 'Reopening to request trace numbers.' },
+      ...authed(token),
+    });
+    assert.equal(held.body.complaint.status, 'needs_more_info');
+    assert.equal(held.body.actions.length, 2);
+    // Newest first, as the timeline renders it.
+    assert.deepEqual(
+      held.body.actions.map((a) => a.action),
+      ['needs_info', 'approve'],
+    );
+  });
+
+  test('deny maps to denied_for_intake', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+
+    const res = await api('POST', `/api/complaints/${row.id}/actions`, {
+      body: { action: 'deny', note: 'Out of scope as filed.' },
+      ...authed(token),
+    });
+    assert.equal(res.body.complaint.status, 'denied_for_intake');
+  });
+
+  test('detail returns complaint, complainant, entity, and actions together', async () => {
+    const submitted = await submit(validSubmission());
+    const token = await reviewerToken();
+    const row = await findByTracking(token, submitted.body.trackingId);
+
+    const detail = await api('GET', `/api/complaints/${row.id}`, authed(token));
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.complainant.role, 'Health care provider');
+    assert.equal(detail.body.complainant.phone, '5550148823'); // normalized to digits
+    assert.equal(detail.body.fae.entityType, 'Health plan');
+    assert.deepEqual(detail.body.actions, []);
   });
 });

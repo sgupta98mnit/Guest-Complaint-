@@ -1,180 +1,263 @@
 import { db } from './index.js';
-import { persistSubmission, persistReview } from '../lib/complaintStore.js';
-import { createOrganization } from '../lib/organizationStore.js';
+import { persistSubmission, persistAction } from '../lib/complaintStore.js';
 
-// Synthetic demo data so the reviewer queue is not empty on a fresh clone.
-// Entirely fabricated - no real people, organizations, or health information.
-// Run with `npm run seed`, or `npm run seed -- --reset` to wipe first.
+// Synthetic demo data, mirroring the rows shown in the design prototype so the
+// queue and its stat tiles look like the handoff. Entirely fabricated - no real
+// people, organizations, or health information.
+//
+// Run with `npm run seed`, or `npm run seed:reset` to wipe first.
 
 const RESET = process.argv.includes('--reset');
 
+const DESCRIPTION =
+  'The health plan rejected our 837P claims for three consecutive months without returning a compliant 277CA acknowledgement. Without the acknowledgement we cannot determine the rejection reason, and roughly 1,400 claims are unresolved. The plan’s portal shows the claims as "not received."';
+
+const ACTIONS_TAKEN =
+  'Four support calls (Jun 3, Jun 19, Jul 2, Jul 28) and two written escalations to the plan’s EDI operations team. No substantive response received.';
+
+/** Oldest first, so tracking IDs ascend the way the prototype shows them. */
 const SUBMISSIONS = [
   {
+    createdAt: '2026-08-05 09:12:00',
     complaint: {
       complaintType: 'Transactions',
-      description:
-        'Payer has been rejecting 837I institutional claims with a generic error that does not map to any documented rejection reason, and will not provide the companion guide section they are enforcing.',
-      actionsTaken:
-        'Called provider services three times over six weeks and submitted a written inquiry through the payer portal. No substantive response.',
+      transactionType: 'Claims & encounter information (837)',
+      description: DESCRIPTION,
+      actionsTaken: ACTIONS_TAKEN,
       incidentDate: '2026-05-14',
-      transactionType: 'Healthcare Claim - Institutional (837I)',
     },
     complainant: {
+      firstName: 'Marcus',
+      lastName: 'Feld',
+      email: 'm.feld@example.org',
+      phone: '5550148823',
+      role: 'Health care provider',
       anonymous: false,
-      orgName: 'Riverbend Regional Hospital',
-      orgType: 'Covered Health Care Provider',
-      firstName: 'Dana',
-      lastName: 'Whitfield',
-      addressLine1: '1400 Mercy Lane',
-      city: 'Buffalo',
-      state: 'New York',
-      zip: '14214',
-      email: 'dana.whitfield@example.org',
-      phone: '7165550142',
     },
     fae: {
       orgName: 'Cardinal Health Plan of New York',
-      orgType: 'Health Plan',
-      contactFirstName: 'Marcus',
-      contactLastName: 'Delgado',
-      addressLine1: '88 Corporate Park Drive',
+      entityType: 'Health plan',
+      address: '480 Rivermont Ave',
       city: 'Albany',
-      state: 'New York',
-      zip: '12205',
-      email: 'compliance@example.com',
+      state: 'NY',
+      zip: '12207',
       phone: '5185550188',
     },
-    review: {
-      action: 'approved',
-      note: 'Clear 837I rejection pattern with documented outreach attempts. Approving for intake and routing to the transactions enforcement queue.',
+    action: {
+      action: 'approve',
+      note: 'Transaction non-compliance is clearly documented with 837P/277CA evidence. Routing to enforcement intake.',
     },
   },
   {
+    createdAt: '2026-08-08 11:40:00',
     complaint: {
-      complaintType: 'Operating Rules',
+      complaintType: 'Operating rules',
+      transactionType: 'Claim status (276/277)',
       description:
-        'Clearinghouse is not returning the CORE-required 277CA acknowledgement within the mandated timeframe, leaving submitted claims in an unknown state for days at a time.',
+        'The clearinghouse is not returning the CORE-required acknowledgement within the mandated window, leaving submitted claims in an unknown state for days at a time.',
       actionsTaken: 'Opened two support tickets; both were closed without resolution.',
       incidentDate: '2026-06-02',
-      transactionType: 'Claim Status Request/Response (276/277)',
     },
     complainant: {
+      role: 'Clearinghouse',
       anonymous: true,
-      orgName: 'Lakeside Family Practice',
-      orgType: 'Covered Health Care Provider',
-      firstName: 'Priya',
-      lastName: 'Raman',
-      addressLine1: '77 Shoreline Road',
-      city: 'Rochester',
-      state: 'New York',
-      zip: '14604',
-      email: 'p.raman@example.org',
-      phone: '5855550119',
     },
     fae: {
       orgName: 'Meridian Claims Clearinghouse',
-      orgType: 'Health Care Clearinghouse',
-      contactFirstName: 'Alicia',
-      contactLastName: 'Nunez',
-      addressLine1: '2100 Gateway Boulevard',
+      entityType: 'Clearinghouse',
+      address: '2100 Gateway Boulevard',
       city: 'Chicago',
-      state: 'Illinois',
+      state: 'IL',
       zip: '60601',
-      email: 'support@example.com',
       phone: '3125550170',
     },
-    review: {
+    action: {
       action: 'needs_info',
-      note: 'Need the specific submission dates and trace numbers for the affected 276 transactions before this can be evaluated. Internal only - do not contact the complainant through the guest channel.',
+      note: 'Operating-rules claim lacks the EFT/ERA trace numbers. Internal hold — no return channel to guest filer.',
     },
   },
   {
+    createdAt: '2026-08-10 14:02:00',
     complaint: {
-      complaintType: 'Unique Identifiers',
+      complaintType: 'Unique identifiers',
+      transactionType: 'Eligibility inquiry & response (270/271)',
       description:
-        'Health plan is requiring a legacy internal provider number instead of the NPI on eligibility inquiries, and rejects 270 transactions that carry only the NPI.',
-      actionsTaken: 'Escalated to the plan network representative.',
+        'The health plan requires a legacy internal provider number instead of the NPI on eligibility inquiries, and rejects 270 transactions carrying only the NPI.',
+      actionsTaken: 'Escalated to the plan network representative twice.',
       incidentDate: '2026-04-21',
-      transactionType: 'Eligibility Inquiry/Response (270/271)',
     },
     complainant: {
-      anonymous: false,
-      orgName: 'Northgate Billing Associates',
-      orgType: 'Business Associate',
-      firstName: 'Owen',
-      lastName: "O'Brien",
-      addressLine1: '19 Commerce Street',
-      city: 'Austin',
-      state: 'Texas',
-      zip: '78701',
-      email: 'owen.obrien+asett@example.org',
+      firstName: 'Elliot',
+      lastName: 'Vance',
+      email: 'e.vance@example.org',
       phone: '5125550133',
+      role: 'Health care provider',
+      anonymous: false,
     },
     fae: {
       orgName: 'Summit Mutual Health',
-      orgType: 'Health Plan',
-      contactFirstName: 'Rebecca',
-      contactLastName: 'Cho',
-      addressLine1: '500 Summit Tower',
+      entityType: 'Health plan',
+      address: '500 Summit Tower',
       city: 'Dallas',
-      state: 'Texas',
+      state: 'TX',
       zip: '75201',
-      email: 'edi.compliance@example.com',
       phone: '2145550164',
     },
-    review: {
-      action: 'denied',
-      note: 'Filed against an entity outside CMS administrative simplification jurisdiction for this transaction set. Denying for intake with a referral note.',
+    action: {
+      action: 'deny',
+      note: 'NPI dispute is a credentialing matter, not an administrative simplification violation. Referred out.',
     },
   },
   {
+    createdAt: '2026-08-11 08:25:00',
     complaint: {
-      complaintType: 'Code Sets',
+      complaintType: 'Code sets',
+      transactionType: 'Payment & remittance advice (835)',
       description:
-        'Remittance advice is returning proprietary adjustment codes rather than the adopted CARC/RARC code set, making automated posting impossible.',
+        'Remittance advice returns proprietary adjustment codes rather than the adopted CARC/RARC code set, which makes automated posting impossible.',
       actionsTaken: '',
       incidentDate: '2026-07-30',
-      transactionType: 'Payment/Remittance Advice (835)',
     },
     complainant: {
-      anonymous: false,
-      orgName: 'Harbor Point Surgical Center',
-      orgType: 'Covered Health Care Provider',
-      firstName: 'Lena',
-      lastName: 'Vasquez',
-      addressLine1: '3 Harbor Point Way',
-      city: 'Miami',
-      state: 'Florida',
-      zip: '33131',
-      email: 'l.vasquez@example.org',
+      firstName: 'Priya',
+      lastName: 'Nandan',
+      email: 'p.nandan@example.org',
       phone: '3055550127',
+      role: 'Health care provider',
+      anonymous: false,
     },
     fae: {
       orgName: 'Atlantic Coast Benefit Administrators',
-      orgType: 'Business Associate',
-      contactFirstName: 'Grant',
-      contactLastName: 'Mullins',
-      addressLine1: '410 Biscayne Avenue',
+      entityType: 'Health plan',
+      address: '410 Biscayne Avenue',
       city: 'Miami',
-      state: 'Florida',
+      state: 'FL',
       zip: '33130',
-      email: 'era.support@example.com',
       phone: '3055550191',
     },
-    // No review - stays in the 'submitted' queue so there is something to act on.
-    review: null,
+    action: null,
+  },
+  {
+    createdAt: '2026-08-12 10:05:00',
+    status: 'in_review',
+    complaint: {
+      complaintType: 'Transactions',
+      transactionType: 'Referrals & authorizations (278)',
+      description:
+        'Authorization responses arrive outside the required response window, and roughly a third return no 278 response at all.',
+      actionsTaken: 'Logged nineteen instances over six weeks and sent a summary to the plan.',
+      incidentDate: '2026-05-14',
+    },
+    complainant: {
+      firstName: 'Ray',
+      lastName: 'Kimura',
+      email: 'r.kimura@example.org',
+      phone: '2065550110',
+      role: 'Billing service',
+      anonymous: false,
+    },
+    fae: {
+      orgName: 'Lakeside Behavioral Group',
+      entityType: 'Health care provider',
+      address: '77 Shoreline Road',
+      city: 'Rochester',
+      state: 'NY',
+      zip: '14604',
+      phone: '5855550119',
+    },
+    action: null,
+  },
+  {
+    createdAt: '2026-08-12 16:30:00',
+    complaint: {
+      complaintType: 'Transactions',
+      transactionType: 'Claims & encounter information (837)',
+      description:
+        'Claims submitted electronically are acknowledged as received and then silently dropped, with no rejection returned on any channel.',
+      actionsTaken: 'Three calls to provider services over six weeks; no substantive response.',
+      incidentDate: '2026-06-30',
+    },
+    complainant: {
+      role: 'Billing service',
+      anonymous: true,
+    },
+    fae: {
+      orgName: 'Northgate Physician Network',
+      entityType: 'Health care provider',
+      address: '19 Commerce Street',
+      city: 'Austin',
+      state: 'TX',
+      zip: '78701',
+      phone: '5125550144',
+    },
+    action: null,
+  },
+  {
+    createdAt: '2026-08-13 09:48:00',
+    complaint: {
+      complaintType: 'Transactions',
+      transactionType: 'Claims & encounter information (837)',
+      description: DESCRIPTION,
+      actionsTaken: ACTIONS_TAKEN,
+      incidentDate: '2026-05-14',
+    },
+    complainant: {
+      firstName: 'Amara',
+      lastName: 'Osei',
+      email: 'a.osei@example.org',
+      phone: '5550148823',
+      role: 'Billing service',
+      anonymous: false,
+    },
+    fae: {
+      orgName: 'Cardinal Health Plan of New York',
+      entityType: 'Health plan',
+      address: '480 Rivermont Ave',
+      city: 'Albany',
+      state: 'NY',
+      zip: '12207',
+      phone: '5185550188',
+    },
+    action: null,
+  },
+  {
+    createdAt: '2026-08-13 16:42:00',
+    complaint: {
+      complaintType: 'Transactions',
+      transactionType: 'Claims & encounter information (837)',
+      description:
+        'Claims are rejected with a generic error that maps to no documented rejection reason, and the plan will not identify the companion-guide section it is enforcing.',
+      actionsTaken: 'Called provider services three times over six weeks and submitted a written inquiry.',
+      incidentDate: '2026-08-13',
+    },
+    complainant: {
+      firstName: 'Dana',
+      lastName: 'Whitfield',
+      email: 'd.whitfield@example.org',
+      phone: '5550148823',
+      role: 'Health care provider',
+      anonymous: false,
+    },
+    fae: {
+      orgName: 'Harbor Point Surgical Center',
+      entityType: 'Health care provider',
+      address: '3 Harbor Point Way',
+      city: 'Miami',
+      state: 'FL',
+      zip: '33131',
+      phone: '3055550127',
+    },
+    action: null,
   },
 ];
 
 function seed() {
   if (RESET) {
-    // Order matters even with ON DELETE CASCADE, since we clear the parent last.
     db.exec(`
-      DELETE FROM complaint_reviews;
+      DELETE FROM complaint_actions;
       DELETE FROM complainants;
-      DELETE FROM fae_entities;
+      DELETE FROM filed_against_entities;
       DELETE FROM complaints;
-      DELETE FROM organizations;
       DELETE FROM tracking_sequence;
     `);
     console.log('[seed] cleared existing data');
@@ -183,35 +266,17 @@ function seed() {
   const existing = db.prepare('SELECT COUNT(*) AS n FROM complaints').get().n;
   if (existing > 0) {
     console.log(
-      `[seed] ${existing} complaint(s) already present - nothing to do. Use "npm run seed -- --reset" to start over.`,
+      `[seed] ${existing} complaint(s) already present - nothing to do. Use "npm run seed:reset" to start over.`,
     );
     return;
   }
 
-  // Register each party as a real organization first, so the wizard's lookup
-  // has something to find and the seeded complaints reference canonical records
-  // rather than dangling name strings.
-  const register = (party) => {
-    const { organization } = createOrganization({
-      name: party.orgName,
-      addressLine1: party.addressLine1,
-      city: party.city,
-      state: party.state,
-      zip: party.zip,
-      phone: party.phone,
-    });
-    party.orgId = organization.id;
-  };
-
-  for (const { review, ...submission } of SUBMISSIONS) {
-    register(submission.complainant);
-    register(submission.fae);
-
-    const { complaintId, trackingId } = persistSubmission(submission);
-    if (review) {
-      persistReview(complaintId, review.action, review.note, 'Jordan Reviewer');
+  for (const { action, status, createdAt, ...submission } of SUBMISSIONS) {
+    const { complaintId, trackingId } = persistSubmission(submission, { status, createdAt });
+    if (action) {
+      persistAction(complaintId, action.action, action.note, 'Jordan Reviewer');
     }
-    console.log(`[seed] ${trackingId} (${review ? review.action : 'submitted'})`);
+    console.log(`[seed] ${trackingId} (${action ? action.action : status || 'submitted'})`);
   }
 
   console.log(`[seed] inserted ${SUBMISSIONS.length} complaints`);

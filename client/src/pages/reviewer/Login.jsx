@@ -3,6 +3,11 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth.jsx';
 import { TextField } from '../../components/Field.jsx';
 
+/**
+ * The prototype jumps straight from "Reviewer sign in" to the queue as a demo
+ * convenience. The handoff's state notes call for a real gate, so this screen
+ * sits in between - a single hardcoded account, as specified.
+ */
 export function Login() {
   const { reviewer, login } = useAuth();
   const navigate = useNavigate();
@@ -14,7 +19,7 @@ export function Login() {
   const [busy, setBusy] = useState(false);
 
   // Where the guard sent them from, so sign-in returns them to the page they
-  // actually wanted rather than always dumping them on the queue.
+  // actually wanted rather than always the queue.
   const destination = location.state?.from || '/reviewer/complaints';
 
   if (reviewer) return <Navigate to={destination} replace />;
@@ -34,51 +39,57 @@ export function Login() {
   }
 
   return (
-    <div className="card" style={{ maxWidth: 460, margin: '0 auto' }}>
-      <h1>Reviewer sign in</h1>
-      <p className="lede">Internal complaint review. Authorized personnel only.</p>
+    <div className="container" style={{ paddingTop: 48, paddingBottom: 72 }}>
+      <div className="card card--pad" style={{ maxWidth: 460, margin: '0 auto' }}>
+        <div className="eyebrow">Intake review</div>
+        <h1 style={{ fontSize: 27, letterSpacing: '-0.015em', margin: '8px 0 6px' }}>
+          Reviewer sign in
+        </h1>
+        <p style={{ color: 'var(--muted)', margin: '0 0 22px' }}>
+          Internal complaint review. Authorized personnel only.
+        </p>
 
-      {error && (
-        <div className="alert alert--error" role="alert">
-          {error}
+        {error && (
+          <div className="callout callout--error" role="alert" style={{ marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate>
+          <TextField
+            id="username"
+            label="Username"
+            required
+            value={username}
+            onChange={setUsername}
+            autoComplete="username"
+            // Mobile keyboards capitalise the first letter and browsers offer
+            // spelling corrections; both silently break a sign-in.
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <TextField
+            id="password"
+            label="Password"
+            type="password"
+            required
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+          />
+
+          <button type="submit" className="btn btn--primary btn--full" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        {/* One hardcoded account, and the credentials are in the README anyway.
+            A real deployment obviously does not advertise them on the form. */}
+        <div className="callout callout--scope" style={{ marginTop: 24 }}>
+          <strong>Demo credentials:</strong> <span className="mono">reviewer</span> /{' '}
+          <span className="mono">reviewer123</span>
         </div>
-      )}
-
-      <form onSubmit={handleSubmit} noValidate>
-        <TextField
-          id="username"
-          label="Username"
-          required
-          value={username}
-          onChange={setUsername}
-          autoComplete="username"
-          // Mobile keyboards capitalise the first letter and browsers offer
-          // spelling corrections; both silently break a login.
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-        />
-        <TextField
-          id="password"
-          label="Password"
-          type="password"
-          required
-          value={password}
-          onChange={setPassword}
-          autoComplete="current-password"
-        />
-
-        <button type="submit" className="btn btn--primary" disabled={busy} style={{ width: '100%' }}>
-          {busy ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
-
-      {/* This is a prototype with one hardcoded account and the credentials are
-          in the README anyway. A real deployment obviously does not advertise
-          them on the login screen. */}
-      <div className="dev-note" style={{ marginTop: '1.5rem', marginBottom: 0 }}>
-        <strong>Demo credentials:</strong> <span className="mono">reviewer</span> /{' '}
-        <span className="mono">reviewer123</span>
       </div>
     </div>
   );

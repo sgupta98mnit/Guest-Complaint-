@@ -7,7 +7,12 @@ export const authRouter = Router();
 // held in memory only (lost on server restart), and just used to gate the
 // review endpoints below - this is demo-grade auth, not production auth.
 // See README "Data Protection Trade-offs" for what real auth would need.
-const REVIEWER = { username: 'reviewer', password: 'reviewer123', name: 'Jordan Reviewer' };
+const REVIEWER = {
+  username: 'reviewer',
+  password: 'reviewer123',
+  name: 'Jordan Reviewer',
+  title: 'Intake analyst · CMS NSG',
+};
 const activeTokens = new Set();
 
 export function requireReviewer(req, res, next) {
@@ -39,7 +44,7 @@ authRouter.post('/login', (req, res) => {
   }
   const token = crypto.randomBytes(24).toString('hex');
   activeTokens.add(token);
-  res.json({ token, name: REVIEWER.name });
+  res.json({ token, name: REVIEWER.name, title: REVIEWER.title });
 });
 
 authRouter.post('/logout', (req, res) => {

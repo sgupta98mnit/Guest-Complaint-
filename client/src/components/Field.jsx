@@ -1,45 +1,47 @@
-// Form primitives. Every control here wires up the same accessibility contract,
-// which is the point of having them: a label bound by `htmlFor`, `aria-required`
-// on required inputs, `aria-invalid` when a field is in error, and
+// Form primitives. Every control wires the same accessibility contract, which
+// is the point of having them: a label bound with `htmlFor`, `aria-required` on
+// required inputs, `aria-invalid` when a field is in error, and
 // `aria-describedby` pointing at the hint and error text so a screen reader
-// announces why a field was rejected instead of just that it was.
+// announces *why* a field was rejected rather than only that it was.
 
-function describedBy(id, hint, error) {
+function describedBy(id, hint, error, extra) {
   const ids = [];
   if (hint) ids.push(`${id}-hint`);
   if (error) ids.push(`${id}-error`);
+  if (extra) ids.push(extra);
   return ids.length ? ids.join(' ') : undefined;
 }
 
 function Label({ id, label, required }) {
   return (
     <label className="field__label" htmlFor={id}>
+      {label}{' '}
       {required && (
-        <span className="field__required" aria-hidden="true">
-          *
-        </span>
+        <>
+          <span className="req" aria-hidden="true">
+            *
+          </span>
+          <span className="visually-hidden">(required)</span>
+        </>
       )}
-      {label}
-      {required && <span className="visually-hidden"> (required)</span>}
     </label>
   );
 }
 
-function Messages({ id, hint, error }) {
-  return (
-    <>
-      {hint && (
-        <span className="field__hint" id={`${id}-hint`}>
-          {hint}
-        </span>
-      )}
-      {error && (
-        <span className="field__error" id={`${id}-error`}>
-          {error}
-        </span>
-      )}
-    </>
-  );
+function Hint({ id, hint }) {
+  return hint ? (
+    <span className="field__hint" id={`${id}-hint`}>
+      {hint}
+    </span>
+  ) : null;
+}
+
+function Error({ id, error }) {
+  return error ? (
+    <span className="field__error" id={`${id}-error`}>
+      {error}
+    </span>
+  ) : null;
 }
 
 export function TextField({
@@ -56,55 +58,61 @@ export function TextField({
   return (
     <div className={`field${error ? ' field--error' : ''}`}>
       <Label id={id} label={label} required={required} />
-      {hint && (
-        <span className="field__hint" id={`${id}-hint`}>
-          {hint}
-        </span>
-      )}
+      <Hint id={id} hint={hint} />
       <input
         className="field__control"
         id={id}
         type={type}
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(id, hint, error)}
         {...rest}
       />
-      {error && (
-        <span className="field__error" id={`${id}-error`}>
-          {error}
-        </span>
-      )}
+      <Error id={id} error={error} />
     </div>
   );
 }
 
-export function TextArea({ id, label, value, onChange, error, hint, required = false, ...rest }) {
+/** Textarea with an optional live character counter. */
+export function TextArea({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  hint,
+  required = false,
+  maxLength,
+  showCounter = false,
+  ...rest
+}) {
+  const counterId = showCounter ? `${id}-counter` : undefined;
+  const used = (value ?? '').length;
+
   return (
     <div className={`field${error ? ' field--error' : ''}`}>
       <Label id={id} label={label} required={required} />
-      {hint && (
-        <span className="field__hint" id={`${id}-hint`}>
-          {hint}
-        </span>
-      )}
+      <Hint id={id} hint={hint} />
       <textarea
         className="field__control"
         id={id}
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy(id, hint, error)}
+        aria-describedby={describedBy(id, hint, error, counterId)}
+        maxLength={maxLength}
         {...rest}
       />
-      {error && (
-        <span className="field__error" id={`${id}-error`}>
-          {error}
-        </span>
+      {showCounter && (
+        // Polite, not assertive: the count should not interrupt typing.
+        <div className="field__counter" id={counterId} aria-live="polite">
+          {used.toLocaleString()} of {maxLength.toLocaleString()} characters
+        </div>
       )}
+      <Error id={id} error={error} />
     </div>
   );
 }
@@ -118,24 +126,22 @@ export function SelectField({
   error,
   hint,
   required = false,
-  placeholder = 'Select an option...',
+  placeholder = 'Select an option…',
+  ...rest
 }) {
   return (
     <div className={`field${error ? ' field--error' : ''}`}>
       <Label id={id} label={label} required={required} />
-      {hint && (
-        <span className="field__hint" id={`${id}-hint`}>
-          {hint}
-        </span>
-      )}
+      <Hint id={id} hint={hint} />
       <select
         className="field__control"
         id={id}
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(id, hint, error)}
+        {...rest}
       >
         <option value="">{placeholder}</option>
         {options.map((option) => {
@@ -148,72 +154,111 @@ export function SelectField({
           );
         })}
       </select>
-      {error && (
-        <span className="field__error" id={`${id}-error`}>
-          {error}
-        </span>
-      )}
+      <Error id={id} error={error} />
     </div>
   );
 }
 
 /**
- * Radio groups are a `fieldset`/`legend`, not a div with a label. That is what
- * lets a screen reader announce the question along with each option instead of
- * reading four disconnected choices.
+ * Radio cards for complaint type and the decision panel.
+ *
+ * A real `fieldset`/`legend` with real radio inputs - the card is only styling
+ * over native controls, so arrow-key navigation and screen-reader grouping work
+ * without being re-implemented.
  */
-export function RadioGroup({ id, legend, value, onChange, options, error, required = false }) {
+export function RadioCards({
+  id,
+  legend,
+  help,
+  value,
+  onChange,
+  options,
+  error,
+  required = false,
+  small = false,
+}) {
   return (
     <fieldset
-      className="field--radio"
       aria-required={required || undefined}
       aria-invalid={error ? true : undefined}
-      aria-describedby={error ? `${id}-error` : undefined}
+      aria-describedby={describedBy(id, help, error)}
     >
       <legend>
+        {legend}{' '}
         {required && (
-          <span className="field__required" aria-hidden="true">
-            *
-          </span>
+          <>
+            <span className="req" aria-hidden="true">
+              *
+            </span>
+            <span className="visually-hidden">(required)</span>
+          </>
         )}
-        {legend}
-        {required && <span className="visually-hidden"> (required)</span>}
       </legend>
+      {help && (
+        <div className="field__hint" id={`${id}-hint`} style={{ marginBottom: 18 }}>
+          {help}
+        </div>
+      )}
 
-      {options.map((option) => {
-        const val = typeof option === 'string' ? option : option.value;
-        const text = typeof option === 'string' ? option : option.label;
-        const description = typeof option === 'string' ? null : option.description;
-        const optionId = `${id}-${String(val).replace(/\W+/g, '-').toLowerCase()}`;
+      <div className="radio-cards">
+        {options.map((option) => {
+          const on = value === option.value;
+          const optionId = `${id}-${option.value}`;
+          return (
+            <label
+              key={option.value}
+              htmlFor={optionId}
+              className={`radio-card${small ? ' radio-card--sm' : ''}${on ? ' radio-card--on' : ''}`}
+            >
+              <input
+                type="radio"
+                id={optionId}
+                name={id}
+                value={option.value}
+                checked={on}
+                onChange={() => onChange(option.value)}
+              />
+              <span className="radio-card__ring" aria-hidden="true">
+                <span className="radio-card__dot" />
+              </span>
+              <span>
+                <span className="radio-card__label">{option.label}</span>
+                {option.description && (
+                  <span className="radio-card__desc" style={{ display: 'block' }}>
+                    {option.description}
+                  </span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
 
-        return (
-          <div className="radio-option" key={val}>
-            <input
-              type="radio"
-              id={optionId}
-              name={id}
-              value={val}
-              checked={value === val}
-              onChange={() => onChange(val)}
-              aria-describedby={description ? `${optionId}-desc` : undefined}
-            />
-            <div className="radio-option__body">
-              <label htmlFor={optionId}>{text}</label>
-              {description && (
-                <p className="radio-option__description" id={`${optionId}-desc`}>
-                  {description}
-                </p>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      <Messages id={id} error={error} />
+      <Error id={id} error={error} />
     </fieldset>
   );
 }
 
-export function SectionTitle({ children }) {
-  return <h2 className="card__section-title">{children}</h2>;
+export function CheckCard({ id, label, description, checked, onChange }) {
+  return (
+    <label className="check-card" htmlFor={id}>
+      <input
+        type="checkbox"
+        id={id}
+        checked={Boolean(checked)}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-describedby={description ? `${id}-desc` : undefined}
+      />
+      <span>
+        <span className="check-card__label" style={{ display: 'block' }}>
+          {label}
+        </span>
+        {description && (
+          <span className="check-card__desc" id={`${id}-desc`} style={{ display: 'block' }}>
+            {description}
+          </span>
+        )}
+      </span>
+    </label>
+  );
 }

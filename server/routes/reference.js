@@ -2,25 +2,28 @@ import { Router } from 'express';
 import {
   COMPLAINT_TYPES,
   TRANSACTION_TYPES,
-  ORG_TYPES,
+  COMPLAINANT_ROLES,
+  ENTITY_TYPES,
   STATES,
-  REVIEW_ACTIONS,
+  DECISIONS,
+  STATUSES,
+  STATUS_FILTERS,
 } from '../lib/referenceData.js';
 
 export const referenceRouter = Router();
 
-// Single source of truth for every picklist in the UI. The client fetches this
-// on load rather than shipping its own copy, so the options the user can pick
-// and the options the server will accept can never drift apart.
-//
-// In production these belong in a reference table with effective dates, not a
-// JS module - see README, "What I cut".
+// Single source of truth for every picklist, status label, and decision option
+// in the UI. The client fetches this on load rather than shipping its own copy,
+// so what a filer can pick and what the server will accept cannot drift apart.
 referenceRouter.get('/', (_req, res) => {
   res.json({
     complaintTypes: COMPLAINT_TYPES,
     transactionTypes: TRANSACTION_TYPES,
-    orgTypes: ORG_TYPES,
+    complainantRoles: COMPLAINANT_ROLES,
+    entityTypes: ENTITY_TYPES,
     states: STATES,
-    reviewActions: REVIEW_ACTIONS,
+    decisions: DECISIONS,
+    statuses: STATUSES,
+    statusFilters: STATUS_FILTERS,
   });
 });
