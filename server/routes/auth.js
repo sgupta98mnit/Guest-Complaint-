@@ -21,8 +21,20 @@ export function requireReviewer(req, res, next) {
 }
 
 authRouter.post('/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if (username !== REVIEWER.username || password !== REVIEWER.password) {
+  // Usernames are trimmed and compared case-insensitively. A stray space from a
+  // paste, or a capitalised first letter from a mobile keyboard, is a typo in
+  // the input - not a different account - and failing on it produces a
+  // "wrong username or password" message that sends people hunting the password.
+  //
+  // Passwords are deliberately NOT trimmed: whitespace can be a legitimate part
+  // of one, and silently stripping it would make some valid passwords
+  // unusable and quietly shrink the keyspace.
+  const username = String(req.body?.username ?? '')
+    .trim()
+    .toLowerCase();
+  const password = String(req.body?.password ?? '');
+
+  if (username !== REVIEWER.username.toLowerCase() || password !== REVIEWER.password) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   const token = crypto.randomBytes(24).toString('hex');

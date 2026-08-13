@@ -24,7 +24,7 @@ export function Login() {
     setError(null);
     setBusy(true);
     try {
-      await login(username, password);
+      await login(username.trim(), password);
       navigate(destination, { replace: true });
     } catch (err) {
       setError(err.status === 401 ? 'Incorrect username or password.' : err.message);
@@ -52,6 +52,11 @@ export function Login() {
           value={username}
           onChange={setUsername}
           autoComplete="username"
+          // Mobile keyboards capitalise the first letter and browsers offer
+          // spelling corrections; both silently break a login.
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
         />
         <TextField
           id="password"

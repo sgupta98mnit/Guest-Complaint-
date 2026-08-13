@@ -378,6 +378,24 @@ describe('reviewer authentication', () => {
     assert.equal(res.status, 401);
   });
 
+  test('tolerates surrounding whitespace and casing in the username', async () => {
+    for (const username of ['  reviewer', 'reviewer  ', ' Reviewer ', 'REVIEWER']) {
+      const res = await api('POST', '/api/auth/login', {
+        body: { username, password: 'reviewer123' },
+      });
+      assert.equal(res.status, 200, `"${username}" should sign in`);
+    }
+  });
+
+  test('does not trim the password', async () => {
+    // Whitespace can be part of a password, so stripping it would make some
+    // valid passwords unusable.
+    const res = await api('POST', '/api/auth/login', {
+      body: { username: 'reviewer', password: ' reviewer123 ' },
+    });
+    assert.equal(res.status, 401);
+  });
+
   test('guards the list and detail endpoints', async () => {
     assert.equal((await api('GET', '/api/complaints')).status, 401);
     assert.equal((await api('GET', '/api/complaints/1')).status, 401);
